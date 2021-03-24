@@ -4,11 +4,13 @@ COMMAND=$1
 
 usage()
 {
-  printf '%s\n' "Redactics CLI"
-  printf 'Usage: %s [-h|--help] <first> <second> [<third>]\n' "$0"
-  printf '\t%s\n' "<first>: The first argument"
-  printf '\t%s\n' "<second>: The second argument"
-  printf '\t%s\n' "<third>: The second argument with a default (default: 'third - default')"
+  printf 'Usage: %s [-h|--help] <command>\n' "$0"
+  printf '\t%s\n' "possible commands:"
+  printf '\t\t%s\n' "list-exports (lists all exported files)"
+  printf '\t\t%s\n' "download-export <filename> (downloads <filename> to local directory)"
+  printf '\t\t%s\n' "list-jobs <database> (lists all export steps for provided database ID)"
+  printf '\t\t%s\n' "start-job <database> (starts new export job for provided database ID)"
+  printf '\t\t%s\n' "version (outputs CLI version)"
   printf '\t%s\n' "-h, --help: Prints help"
 }
 
@@ -38,6 +40,9 @@ BASE_PATH=~/.redactics
 VALUES_PATH=${BASE_PATH}/values.yaml
 EXPORT_POD_PREFIX=redactics-export-
 NAMESPACE=`helm ls --all-namespaces | grep redactics | awk '{print $2}'`
+VERSION=1.0.0
+KUBECTL=`which kubectl`
+HELM=`which helm`
 
 function check_pod {
   echo "*** WAITING FOR REDACTICS-EXPORT POD TO BE PLACED IN \"$NAMESPACE\" NAMESPACE ***"
@@ -61,6 +66,15 @@ function place_export_pod {
     check_pod
   done
 }
+
+# generate warnings about missing helm and kubectl commands
+if [[ -z "$KUBECTL" ]]; then
+  printf "FATAL: kubectl command missing from your shell path. This tool requires your kubectl command be accessible\n"
+  exit 1
+elif [[ -z "$HELM" ]]; then
+  printf "WARNING: helm command missing from your shell path. You will not be able to install and configure your Redactics Agent without this command being accessible\n"
+  exit 1
+fi
 
 case "$1" in
 
@@ -91,6 +105,10 @@ start-job)
   # error handling if database UUID is missing
   ps=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
   kubectl -n $NAMESPACE exec $ps -- /entrypoint.sh airflow trigger_dag $DATABASE
+  ;;
+
+version)
+  printf "$VERSION (visit https://app.redactics.com/cli to check on version updates)\n"
   ;;
 
 -h|--help)
