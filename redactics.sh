@@ -36,8 +36,6 @@ spec:
 EOF
 )
 
-BASE_PATH=~/.redactics
-VALUES_PATH=${BASE_PATH}/values.yaml
 EXPORT_POD_PREFIX=redactics-export-
 NAMESPACE=`helm ls --all-namespaces | grep redactics | awk '{print $2}'`
 VERSION=1.0.0
