@@ -37,8 +37,8 @@ EOF
 )
 
 EXPORT_POD_PREFIX=redactics-export-
-NAMESPACE=`helm ls --all-namespaces | grep redactics | awk '{print $2}'`
-VERSION=1.0.0
+NAMESPACE=`helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics`
+VERSION=1.0.1
 KUBECTL=`which kubectl`
 HELM=`which helm`
 
@@ -103,6 +103,7 @@ start-job)
   # error handling if database UUID is missing
   ps=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
   kubectl -n $NAMESPACE exec $ps -- /entrypoint.sh airflow trigger_dag $DATABASE
+  printf "\nYOUR JOB HAS BEEN QUEUED! To track it's progress, enter \"redactics list-jobs ${DATABASE}\". Errors will be reported to your Redactics account (https://app.redactics.com)."
   ;;
 
 version)
