@@ -7,9 +7,11 @@ usage()
   printf 'Usage: %s [-h|--help] <command>\n' "$0"
   printf '\t%s\n' "possible commands:"
   printf '\t\t%s\n' "list-exports (lists all exported files)"
-  printf '\t\t%s\n' "download-export <filename> (downloads <filename> to local directory)"
-  printf '\t\t%s\n' "list-jobs <database> (lists all export steps for provided database ID)"
-  printf '\t\t%s\n' "start-job <database> (starts new export job for provided database ID)"
+  printf '\t\t%s\n' "download-export [filename] (downloads [filename] to local directory)"
+  printf '\t\t%s\n' "list-jobs [database ID] (lists all export steps for provided [database ID])"
+  printf '\t\t%s\n' "start-job [database ID] (starts new export job for provided [database ID])"
+  printf '\t\t%s\n' "start-scan [database ID] (starts new PII scan for provided [database ID])"
+  printf '\t\t%s\n' "remove-user [database ID] [email] (creates user removal SQL queries for provided [database ID] and [email] address)"
   printf '\t\t%s\n' "version (outputs CLI version)"
   printf '\t%s\n' "-h, --help: Prints help"
 }
@@ -38,7 +40,7 @@ EOF
 
 EXPORT_POD_PREFIX=redactics-export-
 NAMESPACE=`helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics`
-VERSION=1.1.0
+VERSION=1.2.0
 KUBECTL=`which kubectl`
 HELM=`which helm`
 
@@ -67,10 +69,10 @@ function place_export_pod {
 
 # generate warnings about missing helm and kubectl commands
 if [[ -z "$KUBECTL" ]]; then
-  printf "FATAL: kubectl command missing from your shell path. This tool requires your kubectl command be accessible\n"
+  printf "ERROR: kubectl command missing from your shell path. The Redactics CLI requires your kubectl command be accessible\n"
   exit 1
 elif [[ -z "$HELM" ]]; then
-  printf "WARNING: helm command missing from your shell path. You will not be able to install and configure your Redactics Agent without this command being accessible\n"
+  printf "ERROR: helm command missing from your shell path. The Redactics CLI requires the helm command to determine which Kubernetes namespace hosts your Redactics Agent\n"
   exit 1
 fi
 
@@ -85,6 +87,11 @@ list-exports)
 
 download-export)
   DOWNLOAD=$2
+  if [ -z $DOWNLOAD ]
+  then
+    usage
+    exit 1
+  fi
   place_export_pod
   echo "*** DOWNLOADING $DOWNLOAD ***"
   kubectl -n $NAMESPACE cp ${EXPORT_POD}:redacticsdata/export/$DOWNLOAD $DOWNLOAD || cleanup
@@ -93,25 +100,50 @@ download-export)
 
 list-jobs)
   DATABASE=$2
-  # error handling if database UUID is missing
+  if [ -z $DATABASE ]
+  then
+    usage
+    exit 1
+  fi
   rs=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
   kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- /entrypoint.sh airflow list_dag_runs $DATABASE | grep -A 31 "id  | run_id"
   ;;
 
 start-job)
   DATABASE=$2
-  # error handling if database UUID is missing
+  if [ -z $DATABASE ]
+  then
+    usage
+    exit 1
+  fi
   rs=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
   kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- /entrypoint.sh airflow trigger_dag $DATABASE
-  printf "\nYOUR JOB HAS BEEN QUEUED! To track it's progress, enter \"redactics list-jobs ${DATABASE}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
+  printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
   ;;
 
 start-scan)
   DATABASE=$2
-  # error handling if database UUID is missing
+  if [ -z $DATABASE ]
+  then
+    usage
+    exit 1
+  fi
   rs=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
   kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- /entrypoint.sh airflow trigger_dag ${DATABASE}-scanner
-  printf "\nYOUR SCAN HAS BEEN QUEUED! To track it's progress, enter \"redactics list-jobs ${DATABASE}-scanner\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
+  printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/dataprivacy).\n"
+  ;;
+
+remove-user)
+  DATABASE=$2
+  EMAIL=$3
+  if [ -z $DATABASE ] || [ -z $EMAIL ]
+  then
+    usage
+    exit 1
+  fi
+  rs=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
+  #kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- /entrypoint.sh airflow trigger_dag ${DATABASE}-remove-user
+  printf "YOUR USER REMOVAL REQUEST HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-remove-user\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/dataprivacy).\n"
   ;;
 
 version)
