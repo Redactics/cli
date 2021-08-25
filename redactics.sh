@@ -11,7 +11,7 @@ usage()
   printf '\t\t%s\n' "list-jobs [database ID] (lists all export steps for provided [database ID])"
   printf '\t\t%s\n' "start-job [database ID] (starts new export job for provided [database ID])"
   printf '\t\t%s\n' "start-scan [database ID] (starts new PII scan for provided [database ID])"
-  printf '\t\t%s\n' "remove-user [database ID] [email] (creates user removal SQL queries for provided [database ID] and [email] address)"
+  printf '\t\t%s\n' "forget-user [database ID] [email] (creates user removal SQL queries for provided [database ID] and [email] address)"
   printf '\t\t%s\n' "version (outputs CLI version)"
   printf '\t%s\n' "-h, --help: Prints help"
 }
@@ -99,14 +99,14 @@ download-export)
   ;;
 
 list-jobs)
-  DATABASE=$2
-  if [ -z $DATABASE ]
+  DAG=$2
+  if [ -z $DAG ]
   then
     usage
     exit 1
   fi
   rs=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
-  kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- /entrypoint.sh airflow list_dag_runs $DATABASE | grep -A 31 "id  | run_id"
+  kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- bash -c "/entrypoint.sh airflow list_dag_runs $DAG | grep -A 31 \"id  | run_id\""
   ;;
 
 start-job)
@@ -117,8 +117,11 @@ start-job)
     exit 1
   fi
   rs=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
-  kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- /entrypoint.sh airflow trigger_dag $DATABASE
-  printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
+  kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- bash -c "/entrypoint.sh airflow trigger_dag $DATABASE"
+  if [ $? == 0 ]
+  then
+    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
+  fi
   ;;
 
 start-scan)
@@ -129,11 +132,14 @@ start-scan)
     exit 1
   fi
   rs=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
-  kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- /entrypoint.sh airflow trigger_dag ${DATABASE}-scanner
-  printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/dataprivacy).\n"
+  kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-scanner"
+  if [ $? == 0 ]
+  then
+    printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/dataprivacy).\n"
+  fi
   ;;
 
-remove-user)
+forget-user)
   DATABASE=$2
   EMAIL=$3
   if [ -z $DATABASE ] || [ -z $EMAIL ]
@@ -142,8 +148,12 @@ remove-user)
     exit 1
   fi
   rs=`kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}'`
-  #kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- /entrypoint.sh airflow trigger_dag ${DATABASE}-remove-user
-  printf "YOUR USER REMOVAL REQUEST HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-remove-user\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/dataprivacy).\n"
+  JSON="'{\"email\": \"${EMAIL}\"}'"
+  kubectl -n $NAMESPACE -c agent-scheduler exec $rs -- bash -c "/entrypoint.sh airflow trigger_dag -c $JSON ${DATABASE}-usersearch"
+  if [ $? == 0 ]
+  then
+    printf "YOUR USER REMOVAL REQUEST HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-usersearch\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/dataprivacy).\n"
+  fi
   ;;
 
 version)
