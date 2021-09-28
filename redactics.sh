@@ -12,7 +12,7 @@ usage()
   printf '\t\t%s\n' "start-job [database ID] (starts new export job for provided [database ID])"
   printf '\t\t%s\n' "start-scan [database ID] (starts new PII scan for provided [database ID])"
   printf '\t\t%s\n' "forget-user [database ID] [email] (creates user removal SQL queries for provided [database ID] and [email] address and downloads file to local directory)"
-  printf '\t\t%s\n' "install-sampledb [database ID] [sample DB] (installs a sample database using the authentication info provided for [database ID]. [Sample DB] options include: olympics)"
+  printf '\t\t%s\n' "install-sample-table [database ID] [sample table] (installs a collection of sample tables using the authentication info provided for [database ID]. [Sample table] options include: olympics, marketing_campaign)"
   printf '\t\t%s\n' "version (outputs CLI version)"
   printf '\t%s\n' "-h, --help: Prints help"
 }
@@ -144,7 +144,7 @@ start-scan)
   kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-scanner"
   if [ $? == 0 ]
   then
-    printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/dataprivacy).\n"
+    printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
   fi
   ;;
 
@@ -177,36 +177,37 @@ forget-user)
       echo "*** DOWNLOADING $DOWNLOAD ***"
       kubectl -n $NAMESPACE cp ${EXPORT_POD}:redacticsdata/export/$DOWNLOAD $DOWNLOAD || cleanup
     else
-      printf "ERROR: there has been a problem with this request. Please check your Redactics account for more information."
+      printf "ERROR: there has been a problem with this request. Please check your Redactics account for more information (https://app.redactics.com)."
     fi
   fi
   ;;
 
-install-sampledb)
+install-sample-table)
   DATABASE=$2
-  SAMPLE_DB=$3
-  if [ -z $DATABASE ] || [ -z $SAMPLE_DB ]
+  SAMPLE_TABLE=$3
+  if [ -z $DATABASE ] || [ -z $SAMPLE_TABLE ]
   then
     usage
     exit 1
   fi
-  if [ $SAMPLE_DB != "olympics" ]
+  if [ $SAMPLE_TABLE != "olympics" ] && [ $SAMPLE_TABLE != "marketing_campaign" ]
   then
-    printf "sample DB needs to be one of \"olympics\"\n"
+    printf "sample table needs to be one of \"olympics\" or \"marketing_campaign\"\n"
     exit 1
   fi
   # confirm table creation
-  if [ $SAMPLE_DB == "olympics" ]
+  printf "This command will install the tables \"$SAMPLE_TABLE\" into the database provided within your Helm config file corresponding to connection ID $DATABASE\n(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\nBefore installation this command will drop any existing tables called \"$SAMPLE_TABLE\", so if you happen to have a table you have created yourself with this same name, you'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
+  read -r confirm
+  if [ $confirm != "yes" ]
   then
-    printf "This command will install the tables \"athletes\" into the database provided within your Helm config file corresponding to connection ID $DATABASE\n(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\nBefore installation this command will drop any existing tables called \"athletes\", so if you happen to have a table you have created yourself with this same name, you'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
-    read -r confirm
-    if [ $confirm != "yes" ]
-    then
-      exit 0
-    fi
+    exit 0
   fi
   get_redactics_scheduler
-  kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-sampledb-${SAMPLE_DB}"
+  kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-sampletable-${SAMPLE_TABLE}"
+  if [ $? == 0 ]
+  then
+    printf "YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-sampletable-${SAMPLE_TABLE}\". Both the results and any errors will be reported to your Redactics account.\n"
+  fi
   ;;
 
 version)
