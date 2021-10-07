@@ -42,7 +42,7 @@ EOF
 EXPORT_POD_PREFIX=redactics-export-
 NAMESPACE=$(helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics)
 REDACTICS_SCHEDULER=
-VERSION=1.4.0
+VERSION=1.4.1
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 
@@ -176,6 +176,7 @@ forget-user)
       place_export_pod
       echo "*** DOWNLOADING $DOWNLOAD ***"
       kubectl -n $NAMESPACE cp ${EXPORT_POD}:redacticsdata/export/$DOWNLOAD $DOWNLOAD || cleanup
+      cleanup
     else
       printf "ERROR: there has been a problem with this request. Please check your Redactics account for more information (https://app.redactics.com)."
     fi
