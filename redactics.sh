@@ -42,7 +42,7 @@ EOF
 EXPORT_POD_PREFIX=redactics-export-
 NAMESPACE=$(helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics)
 REDACTICS_SCHEDULER=
-VERSION=1.4.1
+VERSION=1.4.2
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 
@@ -70,7 +70,11 @@ function place_export_pod {
 }
 
 function get_redactics_scheduler {
-  REDACTICS_SCHEDULER=$(kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}') 
+  REDACTICS_SCHEDULER=$(kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}')
+  if [[ -z "$REDACTICS_SCHEDULER" ]]; then
+    printf "ERROR: the redactics scheduler pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
+    exit 1
+  fi
 }
 
 # generate warnings about missing helm and kubectl commands
