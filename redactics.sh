@@ -74,7 +74,7 @@ download-export)
     exit 1
   fi
   get_redactics_http_nas
-  kubectl -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/tmp/${DATABASE}/${DOWNLOAD} $DOWNLOAD
+  kubectl -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${DATABASE}/${DOWNLOAD} $DOWNLOAD
   printf "${DOWNLOAD} HAS BEEN DOWNLOADED TO YOUR LOCAL DIRECTORY\n"
   ;;
 
@@ -128,6 +128,7 @@ forget-user)
     exit 1
   fi
   get_redactics_scheduler
+  get_redactics_http_nas
   JSON="'{\"email\": \"${EMAIL}\"}'"
   kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag -c $JSON ${DATABASE}-usersearch"
   if [ $? == 0 ]
@@ -144,10 +145,8 @@ forget-user)
     if [ $poll = "success" ]
     then
       DOWNLOAD="forgetuser-queries-${EMAIL}.sql"
-      place_export_pod
       echo "*** DOWNLOADING $DOWNLOAD ***"
-      kubectl -n $NAMESPACE cp ${EXPORT_POD}:redacticsdata/export/$DOWNLOAD $DOWNLOAD || cleanup
-      cleanup
+      kubectl -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${DATABASE}/${DOWNLOAD} $DOWNLOAD
     else
       printf "ERROR: there has been a problem with this request. Please check your Redactics account for more information (https://app.redactics.com)."
     fi

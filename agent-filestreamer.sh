@@ -23,7 +23,7 @@ download-export)
     usage
     exit 1
   fi
-  curl --output - http://redactics-http-nas:3000/file/${DATABASE}%2F${DOWNLOAD}
+  curl --quiet --output - http://redactics-http-nas:3000/file/${DATABASE}%2F${DOWNLOAD}
   ;;
 
 version)
