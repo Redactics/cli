@@ -25,7 +25,7 @@ KUBECTL=$(which kubectl)
 HELM=$(which helm)
 
 function get_redactics_scheduler {
-  REDACTICS_SCHEDULER=$(kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}')
+  REDACTICS_SCHEDULER=$($KUBECTL -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}')
   if [[ -z "$REDACTICS_SCHEDULER" ]]; then
     printf "ERROR: the redactics scheduler pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
     exit 1
@@ -33,7 +33,7 @@ function get_redactics_scheduler {
 }
 
 function get_redactics_http_nas {
-  REDACTICS_HTTP_NAS=$(kubectl -n $NAMESPACE get pods | grep redactics-http-nas | grep Running | grep 1/1 | awk '{print $1}')
+  REDACTICS_HTTP_NAS=$($KUBECTL -n $NAMESPACE get pods | grep redactics-http-nas | grep Running | grep 1/1 | awk '{print $1}')
   if [[ -z "$REDACTICS_HTTP_NAS" ]]; then
     printf "ERROR: the redactics http nas pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
     exit 1
@@ -62,7 +62,7 @@ list-exports)
     exit 1
   fi
   get_redactics_http_nas
-  kubectl -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${DATABASE}"
+  $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${DATABASE}"
   ;;
 
 download-export)
@@ -74,7 +74,7 @@ download-export)
     exit 1
   fi
   get_redactics_http_nas
-  kubectl -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${DATABASE}/${DOWNLOAD} $DOWNLOAD
+  $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${DATABASE}/${DOWNLOAD} $DOWNLOAD
   printf "${DOWNLOAD} HAS BEEN DOWNLOADED TO YOUR LOCAL DIRECTORY\n"
   ;;
 
@@ -86,7 +86,7 @@ list-jobs)
     exit 1
   fi
   get_redactics_scheduler
-  kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs $DAG | grep -A 31 \"id  | run_id\""
+  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs $DAG | grep -A 31 \"id  | run_id\""
   ;;
 
 start-job)
@@ -97,7 +97,7 @@ start-job)
     exit 1
   fi
   get_redactics_scheduler
-  kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag $DATABASE"
+  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag $DATABASE"
   if [ $? == 0 ]
   then
     printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
@@ -112,7 +112,7 @@ start-scan)
     exit 1
   fi
   get_redactics_scheduler
-  kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-scanner"
+  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-scanner"
   if [ $? == 0 ]
   then
     printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
@@ -130,14 +130,14 @@ forget-user)
   get_redactics_scheduler
   get_redactics_http_nas
   JSON="'{\"email\": \"${EMAIL}\"}'"
-  kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag -c $JSON ${DATABASE}-usersearch"
+  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag -c $JSON ${DATABASE}-usersearch"
   if [ $? == 0 ]
   then
     poll="running"
     until [ $poll = "success" ] || [ $poll = "failed" ]
     do
       printf "WAITING FOR JOB COMPLETION...\n"
-      last_run=$(kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs ${DATABASE}-usersearch | grep -A 2 \"id  | run_id\" | tail -n 1")
+      last_run=$($KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs ${DATABASE}-usersearch | grep -A 2 \"id  | run_id\" | tail -n 1")
       poll=$(echo $last_run | awk '{print $5}')
       sleep 3
     done
@@ -146,7 +146,7 @@ forget-user)
     then
       DOWNLOAD="forgetuser-queries-${EMAIL}.sql"
       echo "*** DOWNLOADING $DOWNLOAD ***"
-      kubectl -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${DATABASE}/${DOWNLOAD} $DOWNLOAD
+      $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${DATABASE}/${DOWNLOAD} $DOWNLOAD
     else
       printf "ERROR: there has been a problem with this request. Please check your Redactics account for more information (https://app.redactics.com)."
     fi
@@ -174,7 +174,7 @@ install-sample-table)
     exit 0
   fi
   get_redactics_scheduler
-  kubectl -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-sampletable-${SAMPLE_TABLE}"
+  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-sampletable-${SAMPLE_TABLE}"
   if [ $? == 0 ]
   then
     printf "YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-sampletable-${SAMPLE_TABLE}\". Both the results and any errors will be reported to your Redactics account.\n"
