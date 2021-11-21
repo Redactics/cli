@@ -17,62 +17,25 @@ usage()
   printf '\t%s\n' "-h, --help: Prints help"
 }
 
-POD=$(cat << EOF
-apiVersion: v1
-kind: Pod
-metadata:
-  generateName: redactics-export-
-  labels:
-    app: redactics-export
-spec:
-  volumes:
-    - name: redacticsdata
-      persistentVolumeClaim:
-        claimName: redactics-dumpvol
-  containers:
-    - name: export
-      image: debian:buster-slim
-      command: ["sleep", "infinity"]
-      volumeMounts:
-        - mountPath: "/redacticsdata"
-          name: redacticsdata
-EOF
-)
-
-EXPORT_POD_PREFIX=redactics-export-
 NAMESPACE=$(helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics)
 REDACTICS_SCHEDULER=
-VERSION=1.4.2
+REDACTICS_HTTP_NAS=
+VERSION=1.5.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
-
-function check_pod {
-  echo "*** WAITING FOR REDACTICS-EXPORT POD TO BE PLACED IN \"$NAMESPACE\" NAMESPACE ***"
-  EXPORT_POD=$(kubectl -n $NAMESPACE get pods | grep $EXPORT_POD_PREFIX | grep Running | grep 1/1 | awk '{print $1}')
-}
-
-function cleanup {
-  echo "*** CLEANING UP ***"
-  kubectl -n $NAMESPACE --wait=false delete pod -l app=redactics-export
-}
-
-function place_export_pod {
-  echo "$POD" | kubectl -n $NAMESPACE create -f -
-
-  # wait for pod to be placed
-  # TODO: give up and cleanup
-  check_pod
-  while [ -z "$EXPORT_POD" ]
-  do
-    sleep 1
-    check_pod
-  done
-}
 
 function get_redactics_scheduler {
   REDACTICS_SCHEDULER=$(kubectl -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}')
   if [[ -z "$REDACTICS_SCHEDULER" ]]; then
     printf "ERROR: the redactics scheduler pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
+    exit 1
+  fi
+}
+
+function get_redactics_http_nas {
+  REDACTICS_HTTP_NAS=$(kubectl -n $NAMESPACE get pods | grep redactics-http-nas | grep Running | grep 1/1 | awk '{print $1}')
+  if [[ -z "$REDACTICS_HTTP_NAS" ]]; then
+    printf "ERROR: the redactics http nas pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
     exit 1
   fi
 }
@@ -92,23 +55,27 @@ fi
 case "$1" in
 
 list-exports)
-  place_export_pod
-  exports=$(kubectl -n $NAMESPACE exec $EXPORT_POD -- ls /redacticsdata/export)
-  printf "\n--- EXPORTS -----------------\n\n$exports\n\n-----------------------------\n"
-  cleanup
-  ;;
-
-download-export)
-  DOWNLOAD=$2
-  if [ -z $DOWNLOAD ]
+  DATABASE=$2
+  if [ -z $DATABASE ]
   then
     usage
     exit 1
   fi
-  place_export_pod
-  echo "*** DOWNLOADING $DOWNLOAD ***"
-  kubectl -n $NAMESPACE cp ${EXPORT_POD}:redacticsdata/export/$DOWNLOAD $DOWNLOAD || cleanup
-  cleanup
+  get_redactics_http_nas
+  kubectl -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${DATABASE}"
+  ;;
+
+download-export)
+  DATABASE=$2
+  DOWNLOAD=$3
+  if [ -z $DATABASE ] || [ -z $DOWNLOAD ]
+  then
+    usage
+    exit 1
+  fi
+  get_redactics_http_nas
+  kubectl -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/tmp/${DATABASE}/${DOWNLOAD} $DOWNLOAD
+  printf "${DOWNLOAD} HAS BEEN DOWNLOADED TO YOUR LOCAL DIRECTORY\n"
   ;;
 
 list-jobs)
@@ -216,7 +183,7 @@ install-sample-table)
   ;;
 
 version)
-  printf "$VERSION (visit https://app.redactics.com/cli to check on version updates)\n"
+  printf "$VERSION (visit https://app.redactics.com/developers to check on version updates)\n"
   ;;
 
 -h|--help)
