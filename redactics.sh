@@ -13,6 +13,7 @@ usage()
   printf '\t\t%s\n' "start-scan [database ID] (starts new PII scan for provided [database ID])"
   printf '\t\t%s\n' "forget-user [database ID] [email] (creates user removal SQL queries for provided [database ID] and [email] address and downloads file to local directory)"
   printf '\t\t%s\n' "install-sample-table [database ID] [sample table] (installs a collection of sample tables using the authentication info provided for [database ID]. [Sample table] options include: olympics, marketing_campaign)"
+  printf '\t\t%s\n' "output-diagostics (creates a folder called \"redactics-diagnostics\" containing files useful for Redactics support to assist customers with troubleshooting agent issues. This excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets)"
   printf '\t\t%s\n' "version (outputs CLI version)"
   printf '\t%s\n' "-h, --help: Prints help"
 }
@@ -20,7 +21,7 @@ usage()
 NAMESPACE=$(helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics)
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=1.5.0
+VERSION=1.6.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 
@@ -179,6 +180,33 @@ install-sample-table)
   then
     printf "YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-sampletable-${SAMPLE_TABLE}\". Both the results and any errors will be reported to your Redactics account.\n"
   fi
+  ;;
+
+output-diagnostics)
+  get_redactics_scheduler
+  OUTPUT_FOLDER=redactics-diagnostics
+  rm -rf $OUTPUT_FOLDER || true
+  mkdir $OUTPUT_FOLDER
+  localenv=$'KUBECTL: '
+  localenv+=$($KUBECTL version)
+  localenv+=$'\nHELM: '
+  localenv+=$($HELM version)
+  localenv+=$'\nREDACTICS CLI VERSION: '
+  localenv+=$(echo $VERSION)
+  localenv+=$'\nDETECTED KUBERNETES NAMESPACE: '
+  localenv+=$(echo $NAMESPACE)
+  localenv+=$'\nSCHEDULER POD: '
+  localenv+=$(echo $REDACTICS_SCHEDULER)
+  printf "$localenv" > ${OUTPUT_FOLDER}/env.log
+  $HELM ls --all-namespaces > ${OUTPUT_FOLDER}/helm.log
+  $KUBECTL -n $NAMESPACE get pods > ${OUTPUT_FOLDER}/pods.log
+  $KUBECTL -n $NAMESPACE get pv > ${OUTPUT_FOLDER}/pv.log
+  $KUBECTL -n $NAMESPACE get pvc > ${OUTPUT_FOLDER}/pvc.log
+  $KUBECTL -n $NAMESPACE get secret > ${OUTPUT_FOLDER}/secret-listing.log
+  $KUBECTL -n $NAMESPACE logs -l app.kubernetes.io/name=http-nas --tail=-1 > ${OUTPUT_FOLDER}/http-nas.log
+  $KUBECTL -n $NAMESPACE logs -l component=scheduler --tail=-1 > ${OUTPUT_FOLDER}/scheduler.log
+  $KUBECTL -n $NAMESPACE -c agent-scheduler cp $REDACTICS_SCHEDULER:/usr/local/airflow/logs ${OUTPUT_FOLDER}/airflow-logs
+  printf "A folder called \"$OUTPUT_FOLDER\" has been created. Please zip this folder and send it to Redactics support for assistance with troubleshooting agent issues\n"
   ;;
 
 version)
