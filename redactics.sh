@@ -6,8 +6,8 @@ usage()
 {
   printf 'Usage: %s [-h|--help] <command>\n' "$0"
   printf '\t%s\n' "possible commands:"
-  printf '\t\t%s\n' "list-exports (lists all exported files)"
-  printf '\t\t%s\n' "download-export [filename] (downloads [filename] to local directory)"
+  printf '\t\t%s\n' "list-exports [database ID] (lists all exported files)"
+  printf '\t\t%s\n' "download-export [database ID] [filename] (downloads [filename] to local directory)"
   printf '\t\t%s\n' "list-jobs [database ID] (lists all export steps for provided [database ID])"
   printf '\t\t%s\n' "start-job [database ID] (starts new export job for provided [database ID])"
   printf '\t\t%s\n' "start-scan [database ID] (starts new PII scan for provided [database ID])"
@@ -21,7 +21,7 @@ usage()
 NAMESPACE=$(helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics)
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=1.6.0
+VERSION=1.6.1
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 
