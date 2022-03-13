@@ -6,13 +6,13 @@ usage()
 {
   printf 'Usage: %s [-h|--help] <command>\n' "$0"
   printf '\t%s\n' "possible commands:"
-  printf '\t\t%s\n' "list-exports [database ID] (lists all exported files)"
-  printf '\t\t%s\n' "download-export [database ID] [filename] (downloads [filename] to local directory)"
-  printf '\t\t%s\n' "list-jobs [database ID] (lists all export steps for provided [database ID])"
-  printf '\t\t%s\n' "start-job [database ID] (starts new export job for provided [database ID])"
-  printf '\t\t%s\n' "start-scan [database ID] (starts new PII scan for provided [database ID])"
-  printf '\t\t%s\n' "forget-user [database ID] [email] (creates user removal SQL queries for provided [database ID] and [email] address and downloads file to local directory)"
-  printf '\t\t%s\n' "install-sample-table [database ID] [sample table] (installs a collection of sample tables using the authentication info provided for [database ID]. [Sample table] options include: olympics, marketing_campaign)"
+  printf '\t\t%s\n' "list-exports [workflow ID] (lists all exported files created by [workflow ID])"
+  printf '\t\t%s\n' "download-export [workflow ID] [filename] (downloads [filename] created by [workflow ID] to local directory)"
+  printf '\t\t%s\n' "list-runs [workflow ID] (lists all workflow runs for [workflow ID])"
+  printf '\t\t%s\n' "start-workflow [workflow ID] (starts new workflow run for provided [workflow ID])"
+  printf '\t\t%s\n' "start-scan [workflow ID] (starts new PII scan for provided [workflow ID])"
+  printf '\t\t%s\n' "forget-user [workflow ID] [email] (creates user removal SQL queries for provided [workflow ID] and [email] address and downloads file to local directory)"
+  printf '\t\t%s\n' "install-sample-table [workflow ID] [sample table] (installs a collection of sample tables using the authentication info provided for [workflow ID]. [Sample table] options include: olympics, marketing_campaign)"
   printf '\t\t%s\n' "output-diagostics (creates a folder called \"redactics-diagnostics\" containing files useful for Redactics support to assist customers with troubleshooting agent issues. This excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets)"
   printf '\t\t%s\n' "version (outputs CLI version)"
   printf '\t%s\n' "-h, --help: Prints help"
@@ -21,7 +21,7 @@ usage()
 NAMESPACE=$(helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics)
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=1.6.1
+VERSION=1.7.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 
@@ -56,30 +56,30 @@ fi
 case "$1" in
 
 list-exports)
-  DATABASE=$2
-  if [ -z $DATABASE ]
+  WORKFLOW=$2
+  if [ -z $WORKFLOW ]
   then
     usage
     exit 1
   fi
   get_redactics_http_nas
-  $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${DATABASE}"
+  $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${WORKFLOW}"
   ;;
 
 download-export)
-  DATABASE=$2
+  WORKFLOW=$2
   DOWNLOAD=$3
-  if [ -z $DATABASE ] || [ -z $DOWNLOAD ]
+  if [ -z $WORKFLOW ] || [ -z $DOWNLOAD ]
   then
     usage
     exit 1
   fi
   get_redactics_http_nas
-  $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${DATABASE}/${DOWNLOAD} $DOWNLOAD
+  $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
   printf "${DOWNLOAD} HAS BEEN DOWNLOADED TO YOUR LOCAL DIRECTORY\n"
   ;;
 
-list-jobs)
+list-runs)
   DAG=$2
   if [ -z $DAG ]
   then
@@ -90,40 +90,40 @@ list-jobs)
   $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs $DAG | grep -A 31 \"id  | run_id\""
   ;;
 
-start-job)
-  DATABASE=$2
-  if [ -z $DATABASE ]
+start-workflow)
+  WORKFLOW=$2
+  if [ -z $WORKFLOW ]
   then
     usage
     exit 1
   fi
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag $DATABASE"
+  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag $WORKFLOW"
   if [ $? == 0 ]
   then
-    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
+    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${WORKFLOW}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
   fi
   ;;
 
 start-scan)
-  DATABASE=$2
-  if [ -z $DATABASE ]
+  WORKFLOW=$2
+  if [ -z $WORKFLOW ]
   then
     usage
     exit 1
   fi
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-scanner"
+  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${WORKFLOW}-scanner"
   if [ $? == 0 ]
   then
-    printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
+    printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${WORKFLOW}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
   fi
   ;;
 
 forget-user)
-  DATABASE=$2
+  WORKFLOW=$2
   EMAIL=$3
-  if [ -z $DATABASE ] || [ -z $EMAIL ]
+  if [ -z $WORKFLOW ] || [ -z $EMAIL ]
   then
     usage
     exit 1
@@ -131,14 +131,14 @@ forget-user)
   get_redactics_scheduler
   get_redactics_http_nas
   JSON="'{\"email\": \"${EMAIL}\"}'"
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag -c $JSON ${DATABASE}-usersearch"
+  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag -c $JSON ${WORKFLOW}-usersearch"
   if [ $? == 0 ]
   then
     poll="running"
     until [ $poll = "success" ] || [ $poll = "failed" ]
     do
       printf "WAITING FOR JOB COMPLETION...\n"
-      last_run=$($KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs ${DATABASE}-usersearch | grep -A 2 \"id  | run_id\" | tail -n 1")
+      last_run=$($KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs ${WORKFLOW}-usersearch | grep -A 2 \"id  | run_id\" | tail -n 1")
       poll=$(echo $last_run | awk '{print $5}')
       sleep 3
     done
@@ -147,7 +147,7 @@ forget-user)
     then
       DOWNLOAD="forgetuser-queries-${EMAIL}.sql"
       echo "*** DOWNLOADING $DOWNLOAD ***"
-      $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${DATABASE}/${DOWNLOAD} $DOWNLOAD
+      $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
     else
       printf "ERROR: there has been a problem with this request. Please check your Redactics account for more information (https://app.redactics.com)."
     fi
@@ -155,9 +155,9 @@ forget-user)
   ;;
 
 install-sample-table)
-  DATABASE=$2
+  WORKFLOW=$2
   SAMPLE_TABLE=$3
-  if [ -z $DATABASE ] || [ -z $SAMPLE_TABLE ]
+  if [ -z $WORKFLOW ] || [ -z $SAMPLE_TABLE ]
   then
     usage
     exit 1
@@ -168,17 +168,17 @@ install-sample-table)
     exit 1
   fi
   # confirm table creation
-  printf "This command will install the tables \"$SAMPLE_TABLE\" into the database provided within your Helm config file corresponding to connection ID $DATABASE\n(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\nBefore installation this command will drop any existing tables called \"$SAMPLE_TABLE\", so if you happen to have a table you have created yourself with this same name, you'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
+  printf "This command will install the tables \"$SAMPLE_TABLE\" into the database provided within your Helm config file corresponding to connection ID $WORKFLOW\n(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\nBefore installation this command will drop any existing tables called \"$SAMPLE_TABLE\", so if you happen to have a table you have created yourself with this same name, you'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
   read -r confirm
   if [ $confirm != "yes" ]
   then
     exit 0
   fi
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${DATABASE}-sampletable-${SAMPLE_TABLE}"
+  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
   if [ $? == 0 ]
   then
-    printf "YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${DATABASE}-sampletable-${SAMPLE_TABLE}\". Both the results and any errors will be reported to your Redactics account.\n"
+    printf "YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}\". Both the results and any errors will be reported to your Redactics account.\n"
   fi
   ;;
 
