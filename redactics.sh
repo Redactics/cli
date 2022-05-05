@@ -1,32 +1,48 @@
 #!/bin/bash
 
 COMMAND=$1
+bold=$(tput bold)
+normal=$(tput sgr0)
 
 usage()
 {
-  printf 'Usage: %s [-h|--help] <command>\n' "$0"
-  printf '\t%s\n' "possible commands:"
-  printf '\t\t%s\n' "list-exports [workflow ID] (lists all exported files created by [workflow ID])"
-  printf '\t\t%s\n' "download-export [workflow ID] [filename] (downloads [filename] created by [workflow ID] to local directory)"
-  printf '\t\t%s\n' "list-runs [workflow ID] (lists all workflow runs for [workflow ID])"
-  printf '\t\t%s\n' "start-workflow [workflow ID] (starts new workflow run for provided [workflow ID])"
-  printf '\t\t%s\n' "start-scan [workflow ID] (starts new PII scan for provided [workflow ID])"
-  printf '\t\t%s\n' "forget-user [workflow ID] [email] (creates user removal SQL queries for provided [workflow ID] and [email] address and downloads file to local directory)"
-  printf '\t\t%s\n' "install-sample-table [workflow ID] [sample table] (installs a collection of sample tables using the authentication info provided for [workflow ID]. [Sample table] options include: olympics, marketing_campaign)"
-  printf '\t\t%s\n' "output-diagostics (creates a folder called \"redactics-diagnostics\" containing files useful for Redactics support to assist customers with troubleshooting agent issues. This excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets)"
-  printf '\t\t%s\n' "version (outputs CLI version)"
-  printf '\t%s\n' "-h, --help: Prints help"
+  printf 'Usage: %s [-h|--help] <command>\n\n' "$0"
+  printf '%s\n\n' "possible commands:"
+  printf '%s\n' "- ${bold}list-exports [workflow ID]"
+  printf '%s\n\n' "  ${normal}lists all exported files created by [workflow ID]"
+  printf '%s\n' "- ${bold}download-export [workflow ID] [filename]"
+  printf '%s\n\n' "  ${normal}downloads [filename] created by [workflow ID] to local directory"
+  printf '%s\n' "- ${bold}list-runs [workflow ID]"
+  printf '%s\n\n' "  ${normal}lists all workflow runs for [workflow ID]"
+  printf '%s\n' "- ${bold}start-workflow [workflow ID]"
+  printf '%s\n\n' "  ${normal}starts new workflow run for provided [workflow ID]"
+  printf '%s\n' "- ${bold}start-scan [workflow ID]"
+  printf '%s\n\n' "  ${normal}starts new PII scan for provided [workflow ID])"
+  printf '%s\n' "- ${bold}init-postgres-datarepo [docker-compose postgres service name] [postgres user] [postgres pass]"
+  printf '%s\n\n' "  ${normal}creates a bash script in local directory for installing datasets from your internal data repository"
+  printf '%s\n' "- ${bold}install-dataset [workflow ID] [revision ID]"
+  printf '%s\n\n' "  ${normal}installs dataset of provided revision ID to your local postgres database"
+  printf '%s\n' "- ${bold}forget-user [workflow ID] [email]"
+  printf '%s\n\n' "  ${normal}creates user removal SQL queries for provided [workflow ID] and [email] address and downloads file to local directory"
+  printf '%s\n' "- ${bold}install-sample-table [workflow ID] [sample table]"
+  printf '%s\n' "  ${normal}installs a collection of sample tables using the authentication info provided for [workflow ID]."
+  printf '%s\n\n' "  [Sample table] options include: olympics, marketing_campaign"
+  printf '%s\n' "- ${bold}output-diagostics"
+  printf '%s\n' "  ${normal}creates a folder called \"redactics-diagnostics\" containing files useful to assist with troubleshooting agent issues."
+  printf '%s\n\n' "  This excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets."
+  printf '%s\n' "- ${bold}version (outputs CLI version)"
+  printf '%s\n' "- ${bold}-h, --help: Prints help"
 }
 
-NAMESPACE=$(helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics)
+NAMESPACE=$(helm ls --all-namespaces | grep redactics | grep agent | awk '{print $2}')
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=1.7.0
+VERSION=2.0.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 
 function get_redactics_scheduler {
-  REDACTICS_SCHEDULER=$($KUBECTL -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}')
+  REDACTICS_SCHEDULER=$($KUBECTL -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 2/2 | awk '{print $1}')
   if [[ -z "$REDACTICS_SCHEDULER" ]]; then
     printf "ERROR: the redactics scheduler pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
     exit 1
@@ -80,14 +96,14 @@ download-export)
   ;;
 
 list-runs)
-  DAG=$2
-  if [ -z $DAG ]
+  WORKFLOW=$2
+  if [ -z $WORKFLOW ]
   then
     usage
     exit 1
   fi
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs $DAG | grep -A 31 \"id  | run_id\""
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags list-runs -d $WORKFLOW | grep -A 31 \"dag_id\""
   ;;
 
 start-workflow)
@@ -98,10 +114,10 @@ start-workflow)
     exit 1
   fi
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag $WORKFLOW"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger $WORKFLOW"
   if [ $? == 0 ]
   then
-    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${WORKFLOW}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
+    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
   fi
   ;;
 
@@ -113,10 +129,10 @@ start-scan)
     exit 1
   fi
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${WORKFLOW}-scanner"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger ${WORKFLOW}-scanner"
   if [ $? == 0 ]
   then
-    printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${WORKFLOW}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
+    printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
   fi
   ;;
 
@@ -131,32 +147,17 @@ forget-user)
   get_redactics_scheduler
   get_redactics_http_nas
   JSON="'{\"email\": \"${EMAIL}\"}'"
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag -c $JSON ${WORKFLOW}-usersearch"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-usersearch"
   if [ $? == 0 ]
   then
-    poll="running"
-    until [ $poll = "success" ] || [ $poll = "failed" ]
-    do
-      printf "WAITING FOR JOB COMPLETION...\n"
-      last_run=$($KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs ${WORKFLOW}-usersearch | grep -A 2 \"id  | run_id\" | tail -n 1")
-      poll=$(echo $last_run | awk '{print $5}')
-      sleep 3
-    done
-
-    if [ $poll = "success" ]
-    then
-      DOWNLOAD="forgetuser-queries-${EMAIL}.sql"
-      echo "*** DOWNLOADING $DOWNLOAD ***"
-      $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
-    else
-      printf "ERROR: there has been a problem with this request. Please check your Redactics account for more information (https://app.redactics.com)."
-    fi
+    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}-usersearch\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
   fi
   ;;
 
 install-sample-table)
   WORKFLOW=$2
   SAMPLE_TABLE=$3
+  INPUT=$4
   if [ -z $WORKFLOW ] || [ -z $SAMPLE_TABLE ]
   then
     usage
@@ -175,10 +176,11 @@ install-sample-table)
     exit 0
   fi
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
+  JSON="'{\"input\": \"${INPUT}\"}'"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
   if [ $? == 0 ]
   then
-    printf "YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}\". Both the results and any errors will be reported to your Redactics account.\n"
+    printf "YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}\". Both the results and any errors will be reported to your Redactics account.\n"
   fi
   ;;
 
@@ -205,7 +207,7 @@ output-diagnostics)
   $KUBECTL -n $NAMESPACE get secret > ${OUTPUT_FOLDER}/secret-listing.log
   $KUBECTL -n $NAMESPACE logs -l app.kubernetes.io/name=http-nas --tail=-1 > ${OUTPUT_FOLDER}/http-nas.log
   $KUBECTL -n $NAMESPACE logs -l component=scheduler --tail=-1 > ${OUTPUT_FOLDER}/scheduler.log
-  $KUBECTL -n $NAMESPACE -c agent-scheduler cp $REDACTICS_SCHEDULER:/usr/local/airflow/logs ${OUTPUT_FOLDER}/airflow-logs
+  $KUBECTL -n $NAMESPACE -c scheduler cp $REDACTICS_SCHEDULER:/opt/airflow/logs ${OUTPUT_FOLDER}/airflow-logs
   printf "A folder called \"$OUTPUT_FOLDER\" has been created. Please zip this folder and send it to Redactics support for assistance with troubleshooting agent issues\n"
   ;;
 
