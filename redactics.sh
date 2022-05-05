@@ -7,7 +7,7 @@ normal=$(tput sgr0)
 usage()
 {
   printf 'Usage: %s [-h|--help] <command>\n\n' "$0"
-  printf '%s\n\n' "possible commands:"
+  printf '%s\n\n' "Redactics SMART Agent possible commands:"
   printf '%s\n' "- ${bold}list-exports [workflow ID]"
   printf '%s\n\n' "  ${normal}lists all exported files created by [workflow ID]"
   printf '%s\n' "- ${bold}download-export [workflow ID] [filename]"
@@ -25,13 +25,15 @@ usage()
   printf '%s\n' "- ${bold}forget-user [workflow ID] [email]"
   printf '%s\n\n' "  ${normal}creates user removal SQL queries for provided [workflow ID] and [email] address and downloads file to local directory"
   printf '%s\n' "- ${bold}install-sample-table [workflow ID] [sample table]"
-  printf '%s\n' "  ${normal}installs a collection of sample tables using the authentication info provided for [workflow ID]."
+  printf '%s\n' "  ${normal}installs a collection of sample tables using the authentication info provided for [workflow ID]"
   printf '%s\n\n' "  [Sample table] options include: olympics, marketing_campaign"
   printf '%s\n' "- ${bold}output-diagostics"
-  printf '%s\n' "  ${normal}creates a folder called \"redactics-diagnostics\" containing files useful to assist with troubleshooting agent issues."
-  printf '%s\n\n' "  This excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets."
-  printf '%s\n' "- ${bold}version (outputs CLI version)"
-  printf '%s\n' "- ${bold}-h, --help: Prints help"
+  printf '%s\n' "  ${normal}creates a folder called \"redactics-diagnostics\" containing files useful to assist with troubleshooting agent issues"
+  printf '%s\n\n' "  (this excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets)"
+  printf '%s\n' "- ${bold}version"
+  printf '%s\n\n' "  ${normal}outputs Redactics SMART Agent CLI version"
+  printf '%s\n' "- ${bold}-h, --help"
+  printf '%s\n' "  ${normal}prints help"
 }
 
 NAMESPACE=$(helm ls --all-namespaces | grep redactics | grep agent | awk '{print $2}')
@@ -57,15 +59,54 @@ function get_redactics_http_nas {
   fi
 }
 
+function gen_downloader {
+  read -r -d '' DOWNLOADER <<- EOM
+version: '3.7'
+services: 
+  downloader:
+    image: amazon/aws-cli:2.4.2
+    environment:
+      S3_BUCKET: ${BUCKET}
+    volumes:
+      - ${HOME}/.aws/credentials:/root/.aws/credentials
+      - /tmp/redactics-datasets:/tmp/redactics-datasets
+EOM
+  echo "$DOWNLOADER" > docker-compose-redactics.yml
+}
+
+function gen_install_dataset {
+  read -r -d '' INSTALL_DATASET <<- EOM
+#!/bin/bash
+
+set -x
+
+WORKFLOW=\$1
+REVISION=\$2
+
+mkdir -p /tmp/redactics-datasets
+docker-compose -f docker-compose-redactics.yml run downloader s3 cp --recursive ${BUCKET}/\${WORKFLOW}/\${REVISION} /tmp/redactics-datasets
+docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -d ${PGDATABASE} -f /tmp/redactics-datasets/complete-schema.sql
+for i in /tmp/redactics-datasets/*.csv; do
+  csv_file=\`basename \$i\`
+  table=\`echo \$csv_file | sed 's/^table-//' | sed 's/.csv$//'\`
+  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -c "TRUNCATE TABLE \$table"
+  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -c "\copy \$table FROM '/tmp/redactics-datasets/\${csv_file}' DELIMITER ',' csv header"
+done
+rm -rf /tmp/redactics-datasets
+EOM
+
+  echo "$INSTALL_DATASET" > install-redactics-dataset.sh
+}
+
 # generate warnings about missing helm and kubectl commands
 if [[ -z "$KUBECTL" ]]; then
-  printf "ERROR: kubectl command missing from your shell path. The Redactics CLI requires your kubectl command be accessible\n"
+  printf "ERROR: kubectl command missing from your shell path. The Redactics SMART Agent CLI requires your kubectl command be accessible\n"
   exit 1
 elif [[ -z "$HELM" ]]; then
-  printf "ERROR: helm command missing from your shell path. The Redactics CLI requires the helm command to determine which Kubernetes namespace hosts your Redactics Agent\n"
+  printf "ERROR: helm command missing from your shell path. The Redactics SMART Agent CLI requires the helm command to determine which Kubernetes namespace hosts your Redactics SMART Agent\n"
   exit 1
 elif [[ -z "$NAMESPACE" ]]; then
-  printf "ERROR: Redactics does not appeared to be installed on the Kubernetes cluster you are currently authenticated to. Please re-install Redactics using the command provided within the \"Agents\" section of your Redactics account\n"
+  printf "ERROR: Redactics does not appeared to be installed on the Kubernetes cluster you are currently authenticated to. Please re-install Redactics using the command provided within the \"SMART Agents\" section of your Redactics account\n"
   exit 1
 fi
 
@@ -134,6 +175,36 @@ start-scan)
   then
     printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
   fi
+  ;;
+
+init-postgres-datarepo)
+  BUCKET=$2
+  PGSERVICE=$3
+  PGUSER=$4
+  PGPASS=$5
+  PGDATABASE=$6
+  if [ -z $BUCKET ] || [ -z $PGSERVICE ] || [ -z $PGUSER ] || [ -z $PGPASS ] || [ -z $PGDATABASE ]
+  then
+    usage
+    exit 1
+  fi
+  # validate bucket URL
+
+  mkdir -p /tmp/redactics-datasets
+  gen_downloader
+  gen_install_dataset
+  chmod +x install-redactics-dataset.sh
+  ;;
+
+install-dataset)
+  WORKFLOW=$2
+  REVISION=$3
+  if [ -z $WORKFLOW ] || [ -z $REVISION ]
+  then
+    usage
+    exit 1
+  fi
+  ./install-redactics-dataset.sh $WORKFLOW $REVISION
   ;;
 
 forget-user)
@@ -208,7 +279,7 @@ output-diagnostics)
   $KUBECTL -n $NAMESPACE logs -l app.kubernetes.io/name=http-nas --tail=-1 > ${OUTPUT_FOLDER}/http-nas.log
   $KUBECTL -n $NAMESPACE logs -l component=scheduler --tail=-1 > ${OUTPUT_FOLDER}/scheduler.log
   $KUBECTL -n $NAMESPACE -c scheduler cp $REDACTICS_SCHEDULER:/opt/airflow/logs ${OUTPUT_FOLDER}/airflow-logs
-  printf "A folder called \"$OUTPUT_FOLDER\" has been created. Please zip this folder and send it to Redactics support for assistance with troubleshooting agent issues\n"
+  printf "A folder called \"$OUTPUT_FOLDER\" has been created. Please zip this folder and send it to Redactics support for assistance with troubleshooting Redactics SMART Agent issues\n"
   ;;
 
 version)
