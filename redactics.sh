@@ -89,8 +89,7 @@ docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PG
 for i in /tmp/redactics-datasets/*.csv; do
   csv_file=\`basename \$i\`
   table=\`echo \$csv_file | sed 's/^table-//' | sed 's/.csv$//'\`
-  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -c "TRUNCATE TABLE \$table"
-  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -c "\copy \$table FROM '/tmp/redactics-datasets/\${csv_file}' DELIMITER ',' csv header"
+  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -c "TRUNCATE TABLE \${table}" -c "\copy \$table FROM '/tmp/redactics-datasets/\${csv_file}' DELIMITER ',' csv header"
 done
 rm -rf /tmp/redactics-datasets
 EOM
@@ -190,7 +189,6 @@ init-postgres-datarepo)
   fi
   # validate bucket URL
 
-  mkdir -p /tmp/redactics-datasets
   gen_downloader
   gen_install_dataset
   chmod +x install-redactics-dataset.sh
@@ -204,6 +202,8 @@ install-dataset)
     usage
     exit 1
   fi
+  # validate docker-compose
+
   ./install-redactics-dataset.sh $WORKFLOW $REVISION
   ;;
 
