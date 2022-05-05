@@ -18,7 +18,7 @@ usage()
   printf '%s\n\n' "  ${normal}starts new workflow run for provided [workflow ID]"
   printf '%s\n' "- ${bold}start-scan [workflow ID]"
   printf '%s\n\n' "  ${normal}starts new PII scan for provided [workflow ID])"
-  printf '%s\n' "- ${bold}init-postgres-datarepo [s3 bucket URL] [docker-compose postgres service name] [postgres user] [postgres pass]"
+  printf '%s\n' "- ${bold}init-postgres-datarepo [s3 bucket URL] [docker-compose postgres service name] [postgres user] [postgres pass] [postgres DB]"
   printf '%s\n\n' "  ${normal}creates a bash script in local directory for installing datasets from your internal data repository"
   printf '%s\n' "- ${bold}install-dataset [workflow ID] [revision ID]"
   printf '%s\n\n' "  ${normal}installs dataset of provided revision ID to your local postgres database"
