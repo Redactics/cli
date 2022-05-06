@@ -18,7 +18,7 @@ usage()
   printf '%s\n\n' "  ${normal}starts new workflow run for provided [workflow ID]"
   printf '%s\n' "- ${bold}start-scan [workflow ID]"
   printf '%s\n\n' "  ${normal}starts new PII scan for provided [workflow ID])"
-  printf '%s\n' "- ${bold}init-postgres-datarepo [s3 bucket URL] [docker-compose postgres service name] [postgres user] [postgres pass] [postgres DB]"
+  printf '%s\n' "- ${bold}init-postgres-datarepo [S3 bucket URL] [docker-compose postgres service name] [postgres user] [postgres pass] [postgres DB]"
   printf '%s\n\n' "  ${normal}creates a bash script in local directory for installing datasets from your internal data repository"
   printf '%s\n' "- ${bold}install-dataset [workflow ID] [revision ID]"
   printf '%s\n\n' "  ${normal}installs dataset of provided revision ID to your local postgres database"
@@ -26,7 +26,7 @@ usage()
   printf '%s\n\n' "  ${normal}creates user removal SQL queries for provided [workflow ID] and [email] address and downloads file to local directory"
   printf '%s\n' "- ${bold}install-sample-table [workflow ID] [sample table]"
   printf '%s\n' "  ${normal}installs a collection of sample tables using the authentication info provided for [workflow ID]"
-  printf '%s\n\n' "  [Sample table] options include: olympics, marketing_campaign"
+  printf '%s\n\n' "  [Sample table] options include: athletes, marketing_campaign"
   printf '%s\n' "- ${bold}output-diagostics"
   printf '%s\n' "  ${normal}creates a folder called \"redactics-diagnostics\" containing files useful to assist with troubleshooting agent issues"
   printf '%s\n\n' "  (this excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets)"
@@ -36,14 +36,26 @@ usage()
   printf '%s\n' "  ${normal}prints help"
 }
 
-NAMESPACE=$(helm ls --all-namespaces | grep redactics | grep agent | awk '{print $2}')
+NAMESPACE=
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
 VERSION=2.0.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
+DOCKER_COMPOSE=$(which docker-compose)
+
+function get_namespace {
+  NAMESPACE=$(helm ls --all-namespaces | grep redactics | grep agent | awk '{print $2}')
+  if [[ -z "$NAMESPACE" ]]; then
+    printf "ERROR: Redactics does not appeared to be installed on the Kubernetes cluster you are currently authenticated to. Please re-install Redactics using the command provided within the \"SMART Agents\" section of your Redactics account\n"
+    exit 1
+  fi
+}
 
 function get_redactics_scheduler {
+  if [[ -z "$NAMESPACE" ]]; then
+    get_namespace
+  fi
   REDACTICS_SCHEDULER=$($KUBECTL -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 2/2 | awk '{print $1}')
   if [[ -z "$REDACTICS_SCHEDULER" ]]; then
     printf "ERROR: the redactics scheduler pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
@@ -52,6 +64,9 @@ function get_redactics_scheduler {
 }
 
 function get_redactics_http_nas {
+  if [[ -z "$NAMESPACE" ]]; then
+    get_namespace
+  fi
   REDACTICS_HTTP_NAS=$($KUBECTL -n $NAMESPACE get pods | grep redactics-http-nas | grep Running | grep 1/1 | awk '{print $1}')
   if [[ -z "$REDACTICS_HTTP_NAS" ]]; then
     printf "ERROR: the redactics http nas pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
@@ -104,9 +119,6 @@ if [[ -z "$KUBECTL" ]]; then
 elif [[ -z "$HELM" ]]; then
   printf "ERROR: helm command missing from your shell path. The Redactics SMART Agent CLI requires the helm command to determine which Kubernetes namespace hosts your Redactics SMART Agent\n"
   exit 1
-elif [[ -z "$NAMESPACE" ]]; then
-  printf "ERROR: Redactics does not appeared to be installed on the Kubernetes cluster you are currently authenticated to. Please re-install Redactics using the command provided within the \"SMART Agents\" section of your Redactics account\n"
-  exit 1
 fi
 
 case "$1" in
@@ -118,6 +130,7 @@ list-exports)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_http_nas
   $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${WORKFLOW}"
   ;;
@@ -130,6 +143,7 @@ download-export)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_http_nas
   $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
   printf "${DOWNLOAD} HAS BEEN DOWNLOADED TO YOUR LOCAL DIRECTORY\n"
@@ -142,6 +156,7 @@ list-runs)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_scheduler
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags list-runs -d $WORKFLOW | grep -A 31 \"dag_id\""
   ;;
@@ -153,6 +168,7 @@ start-workflow)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_scheduler
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger $WORKFLOW"
   if [ $? == 0 ]
@@ -168,6 +184,7 @@ start-scan)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_scheduler
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger ${WORKFLOW}-scanner"
   if [ $? == 0 ]
@@ -188,6 +205,25 @@ init-postgres-datarepo)
     exit 1
   fi
   # validate bucket URL
+  valid_bucket=true
+  if ! [[ $BUCKET =~ ^s3:\/\/ ]]; then
+    # missing prefix
+    valid_bucket=false
+  elif ! [[ $BUCKET =~ ^s3:\/\/[a-zA-Z0-9]{1}[a-zA-Z0-9.-]{1,61}[a-zA-Z0-9]{1}$ ]]; then
+    # invalid name
+    valid_bucket=false
+  elif [[ $BUCKET =~ ^s3:\/\/[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}$ ]]; then
+    # IP address
+    valid_bucket=false
+  elif [[ $BUCKET =~ ^s3:\/\/xn-- ]] || [[ $BUCKET =~ s3:\/\/.*-s3alias$ ]]; then
+    # other forbidden names
+    valid_bucket=false
+  fi
+
+  if [[ "$valid_bucket" = false ]]; then
+    printf "ERROR: invalid S3 bucket URL, buckets must be prefaced by ${bold}s3:// ${normal}and abide by these conventions:\nhttps://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html\n"
+    exit 1
+  fi
 
   gen_downloader
   gen_install_dataset
@@ -203,6 +239,10 @@ install-dataset)
     exit 1
   fi
   # validate docker-compose
+  if [[ -z "$DOCKER_COMPOSE" ]]; then
+    printf "ERROR: docker-compose command missing from your shell path. This feature requires your docker-compose command be accessible\n"
+    exit 1
+  fi
 
   ./install-redactics-dataset.sh $WORKFLOW $REVISION
   ;;
@@ -215,6 +255,7 @@ forget-user)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_scheduler
   get_redactics_http_nas
   JSON="'{\"email\": \"${EMAIL}\"}'"
@@ -229,23 +270,26 @@ install-sample-table)
   WORKFLOW=$2
   SAMPLE_TABLE=$3
   INPUT=$4
-  if [ -z $WORKFLOW ] || [ -z $SAMPLE_TABLE ]
+  if [ -z $WORKFLOW ] || [ -z $SAMPLE_TABLE ] || [ -z $INPUT ]
   then
     usage
     exit 1
   fi
-  if [ $SAMPLE_TABLE != "olympics" ] && [ $SAMPLE_TABLE != "marketing_campaign" ]
+  if [ $SAMPLE_TABLE != "athletes" ] && [ $SAMPLE_TABLE != "marketing_campaign" ]
   then
-    printf "sample table needs to be one of \"olympics\" or \"marketing_campaign\"\n"
+    printf "sample table needs to be one of \"athletes\" or \"marketing_campaign\"\n"
     exit 1
   fi
+  get_namespace
+
   # confirm table creation
-  printf "This command will install the tables \"$SAMPLE_TABLE\" into the database provided within your Helm config file corresponding to connection ID $WORKFLOW\n(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\nBefore installation this command will drop any existing tables called \"$SAMPLE_TABLE\", so if you happen to have a table you have created yourself with this same name, you'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
+  printf "${bold}This command will install the tables \"$SAMPLE_TABLE\" into the database provided within your Helm config file corresponding to connection ID $WORKFLOW\n${normal}(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\n\nBefore installation this command will drop any existing tables called ${bold}$SAMPLE_TABLE${normal}, so if you happen to have a table you have created yourself with this same name,\nyou'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
   read -r confirm
   if [ $confirm != "yes" ]
   then
     exit 0
   fi
+
   get_redactics_scheduler
   JSON="'{\"input\": \"${INPUT}\"}'"
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
@@ -256,6 +300,7 @@ install-sample-table)
   ;;
 
 output-diagnostics)
+  get_namespace
   get_redactics_scheduler
   OUTPUT_FOLDER=redactics-diagnostics
   rm -rf $OUTPUT_FOLDER || true
@@ -277,7 +322,7 @@ output-diagnostics)
   $KUBECTL -n $NAMESPACE get pvc > ${OUTPUT_FOLDER}/pvc.log
   $KUBECTL -n $NAMESPACE get secret > ${OUTPUT_FOLDER}/secret-listing.log
   $KUBECTL -n $NAMESPACE logs -l app.kubernetes.io/name=http-nas --tail=-1 > ${OUTPUT_FOLDER}/http-nas.log
-  $KUBECTL -n $NAMESPACE logs -l component=scheduler --tail=-1 > ${OUTPUT_FOLDER}/scheduler.log
+  $KUBECTL -n $NAMESPACE -c scheduler logs -l component=scheduler --tail=-1 > ${OUTPUT_FOLDER}/scheduler.log
   $KUBECTL -n $NAMESPACE -c scheduler cp $REDACTICS_SCHEDULER:/opt/airflow/logs ${OUTPUT_FOLDER}/airflow-logs
   printf "A folder called \"$OUTPUT_FOLDER\" has been created. Please zip this folder and send it to Redactics support for assistance with troubleshooting Redactics SMART Agent issues\n"
   ;;
