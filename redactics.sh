@@ -106,6 +106,11 @@ for i in /tmp/redactics-datasets/*.csv; do
   table=\`echo \$csv_file | sed 's/^table-//' | sed 's/.csv$//'\`
   docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -c "TRUNCATE TABLE \${table}" -c "\copy \$table FROM '/tmp/redactics-datasets/\${csv_file}' DELIMITER ',' csv header"
 done
+if [ -f redactics-datacleanup.sql ]; then
+  cp ./redactics-datacleanup.sql /tmp/redactics-datacleanup.sql
+  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datacleanup.sql:/redactics-datacleanup.sql ${PGSERVICE} psql -f /redactics-datacleanup.sql
+  rm /tmp/redactics-datacleanup.sql
+fi
 rm -rf /tmp/redactics-datasets
 EOM
 
@@ -238,7 +243,7 @@ install-dataset)
     usage
     exit 1
   fi
-  # validate docker-compose
+  # validate docker-compose presence
   if [[ -z "$DOCKER_COMPOSE" ]]; then
     printf "ERROR: docker-compose command missing from your shell path. This feature requires your docker-compose command be accessible\n"
     exit 1
