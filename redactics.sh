@@ -23,10 +23,10 @@ usage()
   printf '%s\n' "- ${bold}install-dataset [workflow ID] [revision ID]"
   printf '%s\n\n' "  ${normal}installs dataset of provided revision ID to your local postgres database"
   printf '%s\n' "- ${bold}forget-user [workflow ID] [email]"
-  printf '%s\n\n' "  ${normal}creates user removal SQL queries for provided [workflow ID] and [email] address and downloads file to local directory"
-  printf '%s\n' "- ${bold}install-sample-table [workflow ID] [sample table]"
-  printf '%s\n' "  ${normal}installs a collection of sample tables using the authentication info provided for [workflow ID]"
-  printf '%s\n\n' "  [Sample table] options include: athletes, marketing_campaign"
+  printf '%s\n\n' "  ${normal}creates user removal SQL queries for provided [workflow ID] for [email]"
+  printf '%s\n' "- ${bold}install-sample-table [workflow ID] [connection ID] [sample table]"
+  printf '%s\n' "  ${normal}installs a collection of sample tables using the authentication info provided for [workflow ID] and [connection ID]"
+  printf '%s\n\n' "  [Sample table] options include: athletes, marketing_campaign, [connection ID] is the connection ID from your Helm configuration file"
   printf '%s\n' "- ${bold}output-diagostics"
   printf '%s\n' "  ${normal}creates a folder called \"redactics-diagnostics\" containing files useful to assist with troubleshooting agent issues"
   printf '%s\n\n' "  (this excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets)"
@@ -267,15 +267,15 @@ forget-user)
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-usersearch"
   if [ $? == 0 ]
   then
-    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}-usersearch\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
+    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}-usersearch\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/forgetuser).\n"
   fi
   ;;
 
 install-sample-table)
   WORKFLOW=$2
-  SAMPLE_TABLE=$3
-  INPUT=$4
-  if [ -z $WORKFLOW ] || [ -z $SAMPLE_TABLE ] || [ -z $INPUT ]
+  CONN_ID=$3
+  SAMPLE_TABLE=$4
+  if [ -z $WORKFLOW ] || [ -z $SAMPLE_TABLE ] || [ -z $CONN_ID ]
   then
     usage
     exit 1
@@ -296,7 +296,7 @@ install-sample-table)
   fi
 
   get_redactics_scheduler
-  JSON="'{\"input\": \"${INPUT}\"}'"
+  JSON="'{\"input\": \"${CONN_ID}\"}'"
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
   if [ $? == 0 ]
   then
