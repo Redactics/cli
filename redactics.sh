@@ -178,7 +178,7 @@ start-workflow)
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger $WORKFLOW"
   if [ $? == 0 ]
   then
-    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
+    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}${normal}.\nErrors will be reported to your Redactics account (https://app.redactics.com).\n"
   fi
   ;;
 
@@ -194,7 +194,7 @@ start-scan)
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger ${WORKFLOW}-scanner"
   if [ $? == 0 ]
   then
-    printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
+    printf "${bold}YOUR SCAN HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-scanner${normal}.\nBoth the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
   fi
   ;;
 
@@ -267,7 +267,7 @@ forget-user)
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-usersearch"
   if [ $? == 0 ]
   then
-    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}-usersearch\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/forgetuser).\n"
+    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-usersearch${normal}.\nBoth the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/forgetuser).\n"
   fi
   ;;
 
@@ -300,7 +300,7 @@ install-sample-table)
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
   if [ $? == 0 ]
   then
-    printf "YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-runs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}\". Both the results and any errors will be reported to your Redactics account.\n"
+    printf "${bold}YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}${normal}.\nBoth the results and any errors will be reported to your Redactics account.\n"
   fi
   ;;
 
