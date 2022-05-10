@@ -288,7 +288,7 @@ install-sample-table)
   get_namespace
 
   # confirm table creation
-  printf "${bold}This command will install the tables \"$SAMPLE_TABLE\" into the database provided within your Helm config file corresponding to connection ID $WORKFLOW\n${normal}(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\n\nBefore installation this command will drop any existing tables called ${bold}$SAMPLE_TABLE${normal}, so if you happen to have a table you have created yourself with this same name,\nyou'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
+  printf "${bold}This command will install the tables \"$SAMPLE_TABLE\" into the database provided within your Helm config file corresponding to connection ID $CONN_ID\n${normal}(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\n\nBefore installation this command will drop any existing tables called ${bold}$SAMPLE_TABLE${normal}, so if you happen to have a table you have created yourself with this same name,\nyou'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
   read -r confirm
   if [ $confirm != "yes" ]
   then
