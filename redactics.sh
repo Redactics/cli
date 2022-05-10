@@ -1,32 +1,62 @@
 #!/bin/bash
 
 COMMAND=$1
+bold=$(tput bold)
+normal=$(tput sgr0)
 
 usage()
 {
-  printf 'Usage: %s [-h|--help] <command>\n' "$0"
-  printf '\t%s\n' "possible commands:"
-  printf '\t\t%s\n' "list-exports [workflow ID] (lists all exported files created by [workflow ID])"
-  printf '\t\t%s\n' "download-export [workflow ID] [filename] (downloads [filename] created by [workflow ID] to local directory)"
-  printf '\t\t%s\n' "list-runs [workflow ID] (lists all workflow runs for [workflow ID])"
-  printf '\t\t%s\n' "start-workflow [workflow ID] (starts new workflow run for provided [workflow ID])"
-  printf '\t\t%s\n' "start-scan [workflow ID] (starts new PII scan for provided [workflow ID])"
-  printf '\t\t%s\n' "forget-user [workflow ID] [email] (creates user removal SQL queries for provided [workflow ID] and [email] address and downloads file to local directory)"
-  printf '\t\t%s\n' "install-sample-table [workflow ID] [sample table] (installs a collection of sample tables using the authentication info provided for [workflow ID]. [Sample table] options include: olympics, marketing_campaign)"
-  printf '\t\t%s\n' "output-diagostics (creates a folder called \"redactics-diagnostics\" containing files useful for Redactics support to assist customers with troubleshooting agent issues. This excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets)"
-  printf '\t\t%s\n' "version (outputs CLI version)"
-  printf '\t%s\n' "-h, --help: Prints help"
+  printf 'Usage: %s [-h|--help] <command>\n\n' "$0"
+  printf '%s\n\n' "Redactics SMART Agent possible commands:"
+  printf '%s\n' "- ${bold}list-exports [workflow ID]"
+  printf '%s\n\n' "  ${normal}lists all exported files created by [workflow ID]"
+  printf '%s\n' "- ${bold}download-export [workflow ID] [filename]"
+  printf '%s\n\n' "  ${normal}downloads [filename] created by [workflow ID] to local directory"
+  printf '%s\n' "- ${bold}list-runs [workflow ID]"
+  printf '%s\n\n' "  ${normal}lists all workflow runs for [workflow ID]"
+  printf '%s\n' "- ${bold}start-workflow [workflow ID]"
+  printf '%s\n\n' "  ${normal}starts new workflow run for provided [workflow ID]"
+  printf '%s\n' "- ${bold}start-scan [workflow ID]"
+  printf '%s\n\n' "  ${normal}starts new PII scan for provided [workflow ID])"
+  printf '%s\n' "- ${bold}init-postgres-datarepo [S3 bucket URL] [docker-compose postgres service name] [postgres user] [postgres pass] [postgres DB]"
+  printf '%s\n\n' "  ${normal}creates a bash script in local directory for installing datasets from your internal data repository"
+  printf '%s\n' "- ${bold}install-dataset [workflow ID] [revision ID]"
+  printf '%s\n\n' "  ${normal}installs dataset of provided revision ID to your local postgres database"
+  printf '%s\n' "- ${bold}forget-user [workflow ID] [email]"
+  printf '%s\n\n' "  ${normal}creates user removal SQL queries for provided [workflow ID] for [email]"
+  printf '%s\n' "- ${bold}install-sample-table [workflow ID] [connection ID] [sample table]"
+  printf '%s\n' "  ${normal}installs a collection of sample tables using the authentication info provided for [workflow ID] and [connection ID]"
+  printf '%s\n\n' "  [Sample table] options include: athletes, marketing_campaign, [connection ID] is the connection ID from your Helm configuration file"
+  printf '%s\n' "- ${bold}output-diagostics"
+  printf '%s\n' "  ${normal}creates a folder called \"redactics-diagnostics\" containing files useful to assist with troubleshooting agent issues"
+  printf '%s\n\n' "  (this excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets)"
+  printf '%s\n' "- ${bold}version"
+  printf '%s\n\n' "  ${normal}outputs Redactics SMART Agent CLI version"
+  printf '%s\n' "- ${bold}-h, --help"
+  printf '%s\n' "  ${normal}prints help"
 }
 
-NAMESPACE=$(helm ls --all-namespaces | grep redactics | awk '{print $2}' | grep redactics)
+NAMESPACE=
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=1.7.0
+VERSION=2.0.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
+DOCKER_COMPOSE=$(which docker-compose)
+
+function get_namespace {
+  NAMESPACE=$(helm ls --all-namespaces | grep redactics | grep agent | awk '{print $2}')
+  if [[ -z "$NAMESPACE" ]]; then
+    printf "ERROR: Redactics does not appeared to be installed on the Kubernetes cluster you are currently authenticated to. Please re-install Redactics using the command provided within the \"SMART Agents\" section of your Redactics account\n"
+    exit 1
+  fi
+}
 
 function get_redactics_scheduler {
-  REDACTICS_SCHEDULER=$($KUBECTL -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 1/1 | awk '{print $1}')
+  if [[ -z "$NAMESPACE" ]]; then
+    get_namespace
+  fi
+  REDACTICS_SCHEDULER=$($KUBECTL -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 2/2 | awk '{print $1}')
   if [[ -z "$REDACTICS_SCHEDULER" ]]; then
     printf "ERROR: the redactics scheduler pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
     exit 1
@@ -34,6 +64,9 @@ function get_redactics_scheduler {
 }
 
 function get_redactics_http_nas {
+  if [[ -z "$NAMESPACE" ]]; then
+    get_namespace
+  fi
   REDACTICS_HTTP_NAS=$($KUBECTL -n $NAMESPACE get pods | grep redactics-http-nas | grep Running | grep 1/1 | awk '{print $1}')
   if [[ -z "$REDACTICS_HTTP_NAS" ]]; then
     printf "ERROR: the redactics http nas pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
@@ -41,15 +74,55 @@ function get_redactics_http_nas {
   fi
 }
 
+function gen_downloader {
+  read -r -d '' DOWNLOADER <<- EOM
+version: '3.7'
+services: 
+  downloader:
+    image: amazon/aws-cli:2.4.2
+    environment:
+      S3_BUCKET: ${BUCKET}
+    volumes:
+      - ${HOME}/.aws/credentials:/root/.aws/credentials
+      - /tmp/redactics-datasets:/tmp/redactics-datasets
+EOM
+  echo "$DOWNLOADER" > docker-compose-redactics.yml
+}
+
+function gen_install_dataset {
+  read -r -d '' INSTALL_DATASET <<- EOM
+#!/bin/bash
+
+set -x
+
+WORKFLOW=\$1
+REVISION=\$2
+
+mkdir -p /tmp/redactics-datasets
+docker-compose -f docker-compose-redactics.yml run downloader s3 cp --recursive ${BUCKET}/\${WORKFLOW}/\${REVISION} /tmp/redactics-datasets
+docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -d ${PGDATABASE} -f /tmp/redactics-datasets/complete-schema.sql
+for i in /tmp/redactics-datasets/*.csv; do
+  csv_file=\`basename \$i\`
+  table=\`echo \$csv_file | sed 's/^table-//' | sed 's/.csv$//'\`
+  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -c "TRUNCATE TABLE \${table}" -c "\copy \$table FROM '/tmp/redactics-datasets/\${csv_file}' DELIMITER ',' csv header"
+done
+if [ -f redactics-datacleanup.sql ]; then
+  cp ./redactics-datacleanup.sql /tmp/redactics-datacleanup.sql
+  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datacleanup.sql:/redactics-datacleanup.sql ${PGSERVICE} psql -f /redactics-datacleanup.sql
+  rm /tmp/redactics-datacleanup.sql
+fi
+rm -rf /tmp/redactics-datasets
+EOM
+
+  echo "$INSTALL_DATASET" > install-redactics-dataset.sh
+}
+
 # generate warnings about missing helm and kubectl commands
 if [[ -z "$KUBECTL" ]]; then
-  printf "ERROR: kubectl command missing from your shell path. The Redactics CLI requires your kubectl command be accessible\n"
+  printf "ERROR: kubectl command missing from your shell path. The Redactics SMART Agent CLI requires your kubectl command be accessible\n"
   exit 1
 elif [[ -z "$HELM" ]]; then
-  printf "ERROR: helm command missing from your shell path. The Redactics CLI requires the helm command to determine which Kubernetes namespace hosts your Redactics Agent\n"
-  exit 1
-elif [[ -z "$NAMESPACE" ]]; then
-  printf "ERROR: Redactics does not appeared to be installed on the Kubernetes cluster you are currently authenticated to. Please re-install Redactics using the command provided within the \"Agents\" section of your Redactics account\n"
+  printf "ERROR: helm command missing from your shell path. The Redactics SMART Agent CLI requires the helm command to determine which Kubernetes namespace hosts your Redactics SMART Agent\n"
   exit 1
 fi
 
@@ -62,6 +135,7 @@ list-exports)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_http_nas
   $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${WORKFLOW}"
   ;;
@@ -74,20 +148,22 @@ download-export)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_http_nas
   $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
   printf "${DOWNLOAD} HAS BEEN DOWNLOADED TO YOUR LOCAL DIRECTORY\n"
   ;;
 
 list-runs)
-  DAG=$2
-  if [ -z $DAG ]
+  WORKFLOW=$2
+  if [ -z $WORKFLOW ]
   then
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs $DAG | grep -A 31 \"id  | run_id\""
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags list-runs -d $WORKFLOW | grep -A 31 \"dag_id\""
   ;;
 
 start-workflow)
@@ -97,11 +173,12 @@ start-workflow)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag $WORKFLOW"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger $WORKFLOW"
   if [ $? == 0 ]
   then
-    printf "YOUR JOB HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${WORKFLOW}\". Errors will be reported to your Redactics account (https://app.redactics.com).\n"
+    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}${normal}.\nErrors will be reported to your Redactics account (https://app.redactics.com).\n"
   fi
   ;;
 
@@ -112,12 +189,67 @@ start-scan)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${WORKFLOW}-scanner"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger ${WORKFLOW}-scanner"
   if [ $? == 0 ]
   then
-    printf "YOUR SCAN HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${WORKFLOW}-scanner\". Both the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
+    printf "${bold}YOUR SCAN HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-scanner${normal}.\nBoth the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner).\n"
   fi
+  ;;
+
+init-postgres-datarepo)
+  BUCKET=$2
+  PGSERVICE=$3
+  PGUSER=$4
+  PGPASS=$5
+  PGDATABASE=$6
+  if [ -z $BUCKET ] || [ -z $PGSERVICE ] || [ -z $PGUSER ] || [ -z $PGPASS ] || [ -z $PGDATABASE ]
+  then
+    usage
+    exit 1
+  fi
+  # validate bucket URL
+  valid_bucket=true
+  if ! [[ $BUCKET =~ ^s3:\/\/ ]]; then
+    # missing prefix
+    valid_bucket=false
+  elif ! [[ $BUCKET =~ ^s3:\/\/[a-zA-Z0-9]{1}[a-zA-Z0-9.-]{1,61}[a-zA-Z0-9]{1}$ ]]; then
+    # invalid name
+    valid_bucket=false
+  elif [[ $BUCKET =~ ^s3:\/\/[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}.[0-9]{1,3}$ ]]; then
+    # IP address
+    valid_bucket=false
+  elif [[ $BUCKET =~ ^s3:\/\/xn-- ]] || [[ $BUCKET =~ s3:\/\/.*-s3alias$ ]]; then
+    # other forbidden names
+    valid_bucket=false
+  fi
+
+  if [[ "$valid_bucket" = false ]]; then
+    printf "ERROR: invalid S3 bucket URL, buckets must be prefaced by ${bold}s3:// ${normal}and abide by these conventions:\nhttps://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html\n"
+    exit 1
+  fi
+
+  gen_downloader
+  gen_install_dataset
+  chmod +x install-redactics-dataset.sh
+  ;;
+
+install-dataset)
+  WORKFLOW=$2
+  REVISION=$3
+  if [ -z $WORKFLOW ] || [ -z $REVISION ]
+  then
+    usage
+    exit 1
+  fi
+  # validate docker-compose presence
+  if [[ -z "$DOCKER_COMPOSE" ]]; then
+    printf "ERROR: docker-compose command missing from your shell path. This feature requires your docker-compose command be accessible\n"
+    exit 1
+  fi
+
+  ./install-redactics-dataset.sh $WORKFLOW $REVISION
   ;;
 
 forget-user)
@@ -128,61 +260,52 @@ forget-user)
     usage
     exit 1
   fi
+  get_namespace
   get_redactics_scheduler
   get_redactics_http_nas
   JSON="'{\"email\": \"${EMAIL}\"}'"
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag -c $JSON ${WORKFLOW}-usersearch"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-usersearch"
   if [ $? == 0 ]
   then
-    poll="running"
-    until [ $poll = "success" ] || [ $poll = "failed" ]
-    do
-      printf "WAITING FOR JOB COMPLETION...\n"
-      last_run=$($KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow list_dag_runs ${WORKFLOW}-usersearch | grep -A 2 \"id  | run_id\" | tail -n 1")
-      poll=$(echo $last_run | awk '{print $5}')
-      sleep 3
-    done
-
-    if [ $poll = "success" ]
-    then
-      DOWNLOAD="forgetuser-queries-${EMAIL}.sql"
-      echo "*** DOWNLOADING $DOWNLOAD ***"
-      $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
-    else
-      printf "ERROR: there has been a problem with this request. Please check your Redactics account for more information (https://app.redactics.com)."
-    fi
+    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-usersearch${normal}.\nBoth the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/forgetuser).\n"
   fi
   ;;
 
 install-sample-table)
   WORKFLOW=$2
-  SAMPLE_TABLE=$3
-  if [ -z $WORKFLOW ] || [ -z $SAMPLE_TABLE ]
+  CONN_ID=$3
+  SAMPLE_TABLE=$4
+  if [ -z $WORKFLOW ] || [ -z $SAMPLE_TABLE ] || [ -z $CONN_ID ]
   then
     usage
     exit 1
   fi
-  if [ $SAMPLE_TABLE != "olympics" ] && [ $SAMPLE_TABLE != "marketing_campaign" ]
+  if [ $SAMPLE_TABLE != "athletes" ] && [ $SAMPLE_TABLE != "marketing_campaign" ]
   then
-    printf "sample table needs to be one of \"olympics\" or \"marketing_campaign\"\n"
+    printf "sample table needs to be one of \"athletes\" or \"marketing_campaign\"\n"
     exit 1
   fi
+  get_namespace
+
   # confirm table creation
-  printf "This command will install the tables \"$SAMPLE_TABLE\" into the database provided within your Helm config file corresponding to connection ID $WORKFLOW\n(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\nBefore installation this command will drop any existing tables called \"$SAMPLE_TABLE\", so if you happen to have a table you have created yourself with this same name, you'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
+  printf "${bold}This command will install the tables \"$SAMPLE_TABLE\" into the database provided within your Helm config file corresponding to connection ID $WORKFLOW\n${normal}(check your Redactics account to determine the path where this file is installed on your workstation, it is usually ~/.redactics/values.yaml).\n\nBefore installation this command will drop any existing tables called ${bold}$SAMPLE_TABLE${normal}, so if you happen to have a table you have created yourself with this same name,\nyou'll want to try installing another sample database.\n\nEnter \"yes\" to confirm installation of this table\n\n"
   read -r confirm
   if [ $confirm != "yes" ]
   then
     exit 0
   fi
+
   get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c agent-scheduler exec $REDACTICS_SCHEDULER -- bash -c "/entrypoint.sh airflow trigger_dag ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
+  JSON="'{\"input\": \"${CONN_ID}\"}'"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
   if [ $? == 0 ]
   then
-    printf "YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\nTo track progress, enter \"redactics list-jobs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}\". Both the results and any errors will be reported to your Redactics account.\n"
+    printf "${bold}YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}${normal}.\nBoth the results and any errors will be reported to your Redactics account.\n"
   fi
   ;;
 
 output-diagnostics)
+  get_namespace
   get_redactics_scheduler
   OUTPUT_FOLDER=redactics-diagnostics
   rm -rf $OUTPUT_FOLDER || true
@@ -204,9 +327,9 @@ output-diagnostics)
   $KUBECTL -n $NAMESPACE get pvc > ${OUTPUT_FOLDER}/pvc.log
   $KUBECTL -n $NAMESPACE get secret > ${OUTPUT_FOLDER}/secret-listing.log
   $KUBECTL -n $NAMESPACE logs -l app.kubernetes.io/name=http-nas --tail=-1 > ${OUTPUT_FOLDER}/http-nas.log
-  $KUBECTL -n $NAMESPACE logs -l component=scheduler --tail=-1 > ${OUTPUT_FOLDER}/scheduler.log
-  $KUBECTL -n $NAMESPACE -c agent-scheduler cp $REDACTICS_SCHEDULER:/usr/local/airflow/logs ${OUTPUT_FOLDER}/airflow-logs
-  printf "A folder called \"$OUTPUT_FOLDER\" has been created. Please zip this folder and send it to Redactics support for assistance with troubleshooting agent issues\n"
+  $KUBECTL -n $NAMESPACE -c scheduler logs -l component=scheduler --tail=-1 > ${OUTPUT_FOLDER}/scheduler.log
+  $KUBECTL -n $NAMESPACE -c scheduler cp $REDACTICS_SCHEDULER:/opt/airflow/logs ${OUTPUT_FOLDER}/airflow-logs
+  printf "A folder called \"$OUTPUT_FOLDER\" has been created. Please zip this folder and send it to Redactics support for assistance with troubleshooting Redactics SMART Agent issues\n"
   ;;
 
 version)
