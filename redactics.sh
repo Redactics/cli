@@ -39,7 +39,7 @@ usage()
 NAMESPACE=
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=2.0.0
+VERSION=2.1.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 DOCKER_COMPOSE=$(which docker-compose)
@@ -178,7 +178,7 @@ start-workflow)
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger $WORKFLOW"
   if [ $? == 0 ]
   then
-    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}${normal}\nErrors will be reported to your Redactics account (https://app.redactics.com)\n"
+    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}${normal} or visit the ${bold}Workflow Jobs${normal} section of your Redactics account.\nErrors will be reported to your Redactics account (https://app.redactics.com)\n"
   fi
   ;;
 
@@ -267,7 +267,7 @@ forget-user)
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-usersearch"
   if [ $? == 0 ]
   then
-    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-usersearch${normal}.\nBoth the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/forgetuser)\n"
+    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-usersearch${normal} or visit the ${bold}Workflow Jobs${normal} section of your Redactics account.\nBoth the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/forgetuser)\n"
   fi
   ;;
 
@@ -300,7 +300,7 @@ install-sample-table)
   $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
   if [ $? == 0 ]
   then
-    printf "${bold}YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}${normal}.\nBoth the results and any errors will be reported to your Redactics account\n"
+    printf "${bold}YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}${normal} or visit the ${bold}Workflow Jobs${normal} section of your Redactics account.\nBoth the results and any errors will be reported to your Redactics account\n"
   fi
   ;;
 
