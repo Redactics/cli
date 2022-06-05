@@ -8,10 +8,10 @@ usage()
 {
   printf 'Usage: %s [-h|--help] <command>\n\n' "$0"
   printf '%s\n\n' "Redactics SMART Agent possible commands:"
-  printf '%s\n' "- ${bold}list-exports [workflow ID]"
-  printf '%s\n\n' "  ${normal}lists all exported files created by [workflow ID]"
-  printf '%s\n' "- ${bold}download-export [workflow ID] [filename]"
-  printf '%s\n\n' "  ${normal}downloads [filename] created by [workflow ID] to local directory"
+  printf '%s\n' "- ${bold}list-exports [connection ID]"
+  printf '%s\n\n' "  ${normal}lists all exported files exported from [connection ID]"
+  printf '%s\n' "- ${bold}download-export [connection ID] [filename]"
+  printf '%s\n\n' "  ${normal}downloads [filename] exported by [connection ID] to local directory"
   printf '%s\n' "- ${bold}list-runs [workflow ID]"
   printf '%s\n\n' "  ${normal}lists all workflow runs for [workflow ID]"
   printf '%s\n' "- ${bold}start-workflow [workflow ID]"
@@ -39,7 +39,7 @@ usage()
 NAMESPACE=
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=2.1.0
+VERSION=2.1.1
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 DOCKER_COMPOSE=$(which docker-compose)
@@ -129,28 +129,28 @@ fi
 case "$1" in
 
 list-exports)
-  WORKFLOW=$2
-  if [ -z $WORKFLOW ]
+  CONN_ID=$2
+  if [ -z $CONN_ID ]
   then
     usage
     exit 1
   fi
   get_namespace
   get_redactics_http_nas
-  $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${WORKFLOW}"
+  $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${CONN_ID}"
   ;;
 
 download-export)
-  WORKFLOW=$2
+  CONN_ID=$2
   DOWNLOAD=$3
-  if [ -z $WORKFLOW ] || [ -z $DOWNLOAD ]
+  if [ -z $CONN_ID ] || [ -z $DOWNLOAD ]
   then
     usage
     exit 1
   fi
   get_namespace
   get_redactics_http_nas
-  $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
+  $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${CONN_ID}/${DOWNLOAD} $DOWNLOAD
   printf "${DOWNLOAD} HAS BEEN DOWNLOADED TO YOUR LOCAL DIRECTORY\n"
   ;;
 
