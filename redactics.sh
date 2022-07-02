@@ -8,10 +8,10 @@ usage()
 {
   printf 'Usage: %s [-h|--help] <command>\n\n' "$0"
   printf '%s\n\n' "Redactics SMART Agent possible commands:"
-  printf '%s\n' "- ${bold}list-exports [connection ID]"
-  printf '%s\n\n' "  ${normal}lists all exported files exported from [connection ID]"
-  printf '%s\n' "- ${bold}download-export [connection ID] [filename]"
-  printf '%s\n\n' "  ${normal}downloads [filename] exported by [connection ID] to local directory"
+  printf '%s\n' "- ${bold}list-exports [workflow ID]"
+  printf '%s\n\n' "  ${normal}lists all exported files exported from [workflow ID]"
+  printf '%s\n' "- ${bold}download-export [workflow ID] [filename]"
+  printf '%s\n\n' "  ${normal}downloads [filename] exported by [workflow ID] to local directory"
   printf '%s\n' "- ${bold}list-runs [workflow ID]"
   printf '%s\n\n' "  ${normal}lists all workflow runs for [workflow ID]"
   printf '%s\n' "- ${bold}start-workflow [workflow ID]"
@@ -24,7 +24,7 @@ usage()
   printf '%s\n\n' "  ${normal}installs dataset of provided revision ID to your local postgres database"
   printf '%s\n' "- ${bold}forget-user [workflow ID] [email]"
   printf '%s\n\n' "  ${normal}creates user removal SQL queries for provided [workflow ID] for [email]"
-  printf '%s\n' "- ${bold}install-sample-table [workflow ID] [connection ID] [sample table]"
+  printf '%s\n' "- ${bold}install-sample-table [connection ID] [sample table]"
   printf '%s\n' "  ${normal}installs a collection of sample tables using the authentication info provided for [workflow ID] and [connection ID]"
   printf '%s\n\n' "  [Sample table] options include: athletes, marketing_campaign, [connection ID] is the connection ID from your Helm configuration file"
   printf '%s\n' "- ${bold}output-diagostics"
@@ -39,7 +39,7 @@ usage()
 NAMESPACE=
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=2.1.1
+VERSION=2.2.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 DOCKER_COMPOSE=$(which docker-compose)
@@ -129,28 +129,28 @@ fi
 case "$1" in
 
 list-exports)
-  CONN_ID=$2
-  if [ -z $CONN_ID ]
+  WORKFLOW=$2
+  if [ -z $WORKFLOW ]
   then
     usage
     exit 1
   fi
   get_namespace
   get_redactics_http_nas
-  $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${CONN_ID}"
+  $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${WORKFLOW}"
   ;;
 
 download-export)
-  CONN_ID=$2
+  WORKFLOW=$2
   DOWNLOAD=$3
-  if [ -z $CONN_ID ] || [ -z $DOWNLOAD ]
+  if [ -z $WORKFLOW ] || [ -z $DOWNLOAD ]
   then
     usage
     exit 1
   fi
   get_namespace
   get_redactics_http_nas
-  $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${CONN_ID}/${DOWNLOAD} $DOWNLOAD
+  $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
   printf "${DOWNLOAD} HAS BEEN DOWNLOADED TO YOUR LOCAL DIRECTORY\n"
   ;;
 
@@ -272,10 +272,9 @@ forget-user)
   ;;
 
 install-sample-table)
-  WORKFLOW=$2
-  CONN_ID=$3
-  SAMPLE_TABLE=$4
-  if [ -z $WORKFLOW ] || [ -z $SAMPLE_TABLE ] || [ -z $CONN_ID ]
+  CONN_ID=$2
+  SAMPLE_TABLE=$3
+  if [ -z $SAMPLE_TABLE ] || [ -z $CONN_ID ]
   then
     usage
     exit 1
@@ -297,10 +296,10 @@ install-sample-table)
 
   get_redactics_scheduler
   JSON="'{\"input\": \"${CONN_ID}\"}'"
-  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-sampletable-${SAMPLE_TABLE}"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON sampletable-${SAMPLE_TABLE}"
   if [ $? == 0 ]
   then
-    printf "${bold}YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-sampletable-${SAMPLE_TABLE}${normal} or visit the ${bold}Workflow Jobs${normal} section of your Redactics account.\nBoth the results and any errors will be reported to your Redactics account\n"
+    printf "${bold}YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs sampletable-${SAMPLE_TABLE}${normal} or visit the ${bold}Workflow Jobs${normal} section of your Redactics account.\nBoth the results and any errors will be reported to your Redactics account\n"
   fi
   ;;
 
