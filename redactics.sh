@@ -22,8 +22,6 @@ usage()
   printf '%s\n\n' "  ${normal}creates a bash script in local directory for installing datasets from your internal data repository"
   printf '%s\n' "- ${bold}install-postgres-dataset [workflow ID] [revision ID]"
   printf '%s\n\n' "  ${normal}installs dataset of provided revision ID to your local postgres database"
-  printf '%s\n' "- ${bold}forget-user [workflow ID] [email]"
-  printf '%s\n\n' "  ${normal}creates user removal SQL queries for provided [workflow ID] for [email]"
   printf '%s\n' "- ${bold}install-sample-table [connection ID] [sample table]"
   printf '%s\n' "  ${normal}installs a collection of sample tables using the authentication info provided for [workflow ID] and [connection ID]"
   printf '%s\n\n' "  [Sample table] options include: athletes, marketing_campaign, [connection ID] is the connection ID from your Helm configuration file"
@@ -39,7 +37,7 @@ usage()
 NAMESPACE=
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=2.2.0
+VERSION=2.3.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 DOCKER_COMPOSE=$(which docker-compose)
@@ -250,25 +248,6 @@ install-postgres-dataset)
   fi
 
   ./install-redactics-dataset.sh $WORKFLOW $REVISION
-  ;;
-
-forget-user)
-  WORKFLOW=$2
-  EMAIL=$3
-  if [ -z $WORKFLOW ] || [ -z $EMAIL ]
-  then
-    usage
-    exit 1
-  fi
-  get_namespace
-  get_redactics_scheduler
-  get_redactics_http_nas
-  JSON="'{\"email\": \"${EMAIL}\"}'"
-  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON ${WORKFLOW}-usersearch"
-  if [ $? == 0 ]
-  then
-    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-usersearch${normal} or visit the ${bold}Workflow Jobs${normal} section of your Redactics account.\nBoth the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/forgetuser)\n"
-  fi
   ;;
 
 install-sample-table)
