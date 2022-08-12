@@ -37,7 +37,7 @@ usage()
 NAMESPACE=
 REDACTICS_SCHEDULER=
 REDACTICS_HTTP_NAS=
-VERSION=2.3.0
+VERSION=2.4.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 DOCKER_COMPOSE=$(which docker-compose)
@@ -97,13 +97,24 @@ WORKFLOW=\$1
 REVISION=\$2
 
 mkdir -p /tmp/redactics-datasets
-docker-compose -f docker-compose-redactics.yml run downloader s3 cp --recursive ${BUCKET}/\${WORKFLOW}/\${REVISION} /tmp/redactics-datasets
-docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -d ${PGDATABASE} -f /tmp/redactics-datasets/complete-schema.sql
-for i in /tmp/redactics-datasets/*.csv; do
+docker-compose -f docker-compose-redactics.yml run downloader s3 cp --recursive ${BUCKET}/\${WORKFLOW}/\${REVISION}/ /tmp/redactics-datasets
+docker-compose -f docker-compose-redactics.yml run downloader s3 cp --recursive ${BUCKET}/\${WORKFLOW} /tmp/redactics-datasets --exclude "*" --include "*.sql"
+csv_files=()
+for i in /tmp/redactics-datasets/table-*.csv; do
   csv_file=\`basename \$i\`
+  csv_files+=(\$csv_file)
   table=\`echo \$csv_file | sed 's/^table-//' | sed 's/.csv$//'\`
-  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -c "TRUNCATE TABLE \${table}" -c "\copy \$table FROM '/tmp/redactics-datasets/\${csv_file}' DELIMITER ',' csv header"
+  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} ${PGSERVICE} psql -c "DROP TABLE IF EXISTS \${table} CASCADE"
 done
+for i in /tmp/redactics-datasets/schema-*.sql; do
+  sql_file=\`basename \$i\`
+  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -d ${PGDATABASE} -f "/tmp/redactics-datasets/\$sql_file"
+done
+for csv_file in "\${csv_files[@]}"; do
+  table=\`echo \$csv_file | sed 's/^table-//' | sed 's/.csv$//'\`
+  docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -c "\copy \$table FROM '/tmp/redactics-datasets/\${csv_file}' DELIMITER ',' csv header"
+done
+
 if [ -f redactics-datacleanup.sql ]; then
   cp ./redactics-datacleanup.sql /tmp/redactics-datacleanup.sql
   docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} -v /tmp/redactics-datacleanup.sql:/redactics-datacleanup.sql ${PGSERVICE} psql -f /redactics-datacleanup.sql
