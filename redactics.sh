@@ -98,8 +98,8 @@ REVISION=\$2
 
 mkdir -p /tmp/redactics-datasets
 docker-compose -f docker-compose-redactics.yml run downloader s3 cp --recursive ${BUCKET}/\${WORKFLOW}/\${REVISION}/ /tmp/redactics-datasets
-docker-compose -f docker-compose-redactics.yml run downloader s3 cp --recursive ${BUCKET}/\${WORKFLOW} /tmp/redactics-datasets --exclude "*" --include "*.sql"
 csv_files=()
+schema_files=()
 for i in /tmp/redactics-datasets/table-*.csv; do
   csv_file=\`basename \$i\`
   csv_files+=(\$csv_file)
@@ -107,6 +107,15 @@ for i in /tmp/redactics-datasets/table-*.csv; do
   docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -e PGDATABASE=${PGDATABASE} ${PGSERVICE} psql -c "DROP TABLE IF EXISTS \${table} CASCADE"
 done
 for i in /tmp/redactics-datasets/schema-*.sql; do
+  sql_file=\`basename \$i\`
+  is_sequence=\`grep "CREATE SEQUENCE" \$i\`
+  if [ ! -z "\$is_sequence" ]; then
+    docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -d ${PGDATABASE} -f "/tmp/redactics-datasets/\$sql_file"
+  else
+    schema_files+=(\$sql_file)
+  fi
+done
+for i in "\${schema_files[@]}"; do
   sql_file=\`basename \$i\`
   docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -d ${PGDATABASE} -f "/tmp/redactics-datasets/\$sql_file"
 done
