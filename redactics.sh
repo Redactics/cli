@@ -108,15 +108,6 @@ for i in /tmp/redactics-datasets/table-*.csv; do
 done
 for i in /tmp/redactics-datasets/schema-*.sql; do
   sql_file=\`basename \$i\`
-  is_sequence=\`grep "CREATE SEQUENCE" \$i\`
-  if [ ! -z "\$is_sequence" ]; then
-    docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -d ${PGDATABASE} -f "/tmp/redactics-datasets/\$sql_file"
-  else
-    schema_files+=(\$sql_file)
-  fi
-done
-for i in "\${schema_files[@]}"; do
-  sql_file=\`basename \$i\`
   docker-compose run -e PGHOST=${PGSERVICE} -e PGUSER=${PGUSER} -e PGPASSWORD=${PGPASS} -v /tmp/redactics-datasets:/tmp/redactics-datasets ${PGSERVICE} psql -d ${PGDATABASE} -f "/tmp/redactics-datasets/\$sql_file"
 done
 for csv_file in "\${csv_files[@]}"; do
