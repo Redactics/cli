@@ -7,7 +7,7 @@ normal=$(tput sgr0)
 usage()
 {
   printf 'Usage: %s [-h|--help] <command>\n\n' "$0"
-  printf '%s\n\n' "Redactics SMART Agent possible commands:"
+  printf '%s\n\n' "Redactics Agent possible commands:"
   printf '%s\n' "- ${bold}list-exports [workflow ID]"
   printf '%s\n\n' "  ${normal}lists all exported files exported from [workflow ID]"
   printf '%s\n' "- ${bold}download-export [workflow ID] [filename]"
@@ -29,15 +29,15 @@ usage()
   printf '%s\n' "  ${normal}creates a folder called \"redactics-diagnostics\" containing files useful to assist with troubleshooting agent issues"
   printf '%s\n\n' "  (this excludes sensitive information such as your Helm config file or the contents of your Kubernetes secrets)"
   printf '%s\n' "- ${bold}version"
-  printf '%s\n\n' "  ${normal}outputs Redactics SMART Agent CLI version"
+  printf '%s\n\n' "  ${normal}outputs Redactics Agent CLI version"
   printf '%s\n' "- ${bold}-h, --help"
   printf '%s\n' "  ${normal}prints help"
 }
 
 NAMESPACE=
-REDACTICS_SCHEDULER=
-REDACTICS_HTTP_NAS=
-VERSION=2.4.0
+AGENT_SCHEDULER=
+AGENT_HTTP_NAS=
+VERSION=3.0.0
 KUBECTL=$(which kubectl)
 HELM=$(which helm)
 DOCKER_COMPOSE=$(which docker-compose)
@@ -45,29 +45,29 @@ DOCKER_COMPOSE=$(which docker-compose)
 function get_namespace {
   NAMESPACE=$(helm ls --all-namespaces | grep redactics | grep agent | awk '{print $2}')
   if [[ -z "$NAMESPACE" ]]; then
-    printf "ERROR: Redactics does not appeared to be installed on the Kubernetes cluster you are currently authenticated to. Please re-install Redactics using the command provided within the \"SMART Agents\" section of your Redactics account\n"
+    printf "ERROR: Redactics does not appeared to be installed on the Kubernetes cluster you are currently authenticated to. Please re-install Redactics using the command provided within the \"Agents\" section of the Redactics dashboard\n"
     exit 1
   fi
 }
 
-function get_redactics_scheduler {
+function get_agent_scheduler {
   if [[ -z "$NAMESPACE" ]]; then
     get_namespace
   fi
-  REDACTICS_SCHEDULER=$($KUBECTL -n $NAMESPACE get pods | grep redactics-scheduler | grep Running | grep 2/2 | awk '{print $1}')
-  if [[ -z "$REDACTICS_SCHEDULER" ]]; then
-    printf "ERROR: the redactics scheduler pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
+  AGENT_SCHEDULER=$($KUBECTL -n $NAMESPACE get pods | grep agent-scheduler | grep Running | grep 2/2 | awk '{print $1}')
+  if [[ -z "$AGENT_SCHEDULER" ]]; then
+    printf "ERROR: the redactics scheduler pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) in your Redactics dashboard\nor else contact Redactics support for help (support@redactics.com)\n"
     exit 1
   fi
 }
 
-function get_redactics_http_nas {
+function get_agent_http_nas {
   if [[ -z "$NAMESPACE" ]]; then
     get_namespace
   fi
-  REDACTICS_HTTP_NAS=$($KUBECTL -n $NAMESPACE get pods | grep redactics-http-nas | grep Running | grep 1/1 | awk '{print $1}')
-  if [[ -z "$REDACTICS_HTTP_NAS" ]]; then
-    printf "ERROR: the redactics http nas pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) at https://app.redactics.com\nor else contact Redactics support for help (support@redactics.com)\n"
+  AGENT_HTTP_NAS=$($KUBECTL -n $NAMESPACE get pods | grep agent-http-nas | grep Running | grep 1/1 | awk '{print $1}')
+  if [[ -z "$AGENT_HTTP_NAS" ]]; then
+    printf "ERROR: the redactics http nas pod cannot be found in the \"${NAMESPACE}\" Kubernetes namespace, or else it is not in a \"Running\" state ready to receive commands.\nTo correct this problem, if this pod is missing from your \"kubectl get pods -n ${NAMESPACE}\" output try reinstalling the Redactics agent.\nIf it is installed but not marked as running, please check for errors in the notification center (i.e. the notification bell) in your Redactics dashboard\nor else contact Redactics support for help (support@redactics.com)\n"
     exit 1
   fi
 }
@@ -128,10 +128,10 @@ EOM
 
 # generate warnings about missing helm and kubectl commands
 if [[ -z "$KUBECTL" ]]; then
-  printf "ERROR: kubectl command missing from your shell path. The Redactics SMART Agent CLI requires your kubectl command be accessible\n"
+  printf "ERROR: kubectl command missing from your shell path. The Redactics Agent CLI requires your kubectl command be accessible\n"
   exit 1
 elif [[ -z "$HELM" ]]; then
-  printf "ERROR: helm command missing from your shell path. The Redactics SMART Agent CLI requires the helm command to determine which Kubernetes namespace hosts your Redactics SMART Agent\n"
+  printf "ERROR: helm command missing from your shell path. The Redactics Agent CLI requires the helm command to determine which Kubernetes namespace hosts your Redactics SMART Agent\n"
   exit 1
 fi
 
@@ -145,8 +145,8 @@ list-exports)
     exit 1
   fi
   get_namespace
-  get_redactics_http_nas
-  $KUBECTL -n $NAMESPACE exec -it $REDACTICS_HTTP_NAS -- curl "http://localhost:3000/file/${WORKFLOW}"
+  get_agent_http_nas
+  $KUBECTL -n $NAMESPACE exec -it $AGENT_HTTP_NAS -- curl "http://localhost:3000/file/${WORKFLOW}"
   ;;
 
 download-export)
@@ -158,8 +158,8 @@ download-export)
     exit 1
   fi
   get_namespace
-  get_redactics_http_nas
-  $KUBECTL -n $NAMESPACE cp ${REDACTICS_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
+  get_agent_http_nas
+  $KUBECTL -n $NAMESPACE cp ${AGENT_HTTP_NAS}:/mnt/storage/${WORKFLOW}/${DOWNLOAD} $DOWNLOAD
   printf "${DOWNLOAD} HAS BEEN DOWNLOADED TO YOUR LOCAL DIRECTORY\n"
   ;;
 
@@ -171,8 +171,8 @@ list-runs)
     exit 1
   fi
   get_namespace
-  get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags list-runs -d $WORKFLOW | grep -A 31 \"dag_id\""
+  get_agent_scheduler
+  $KUBECTL -n $NAMESPACE -c scheduler exec $AGENT_SCHEDULER -- bash -c "airflow dags list-runs -d $WORKFLOW | grep -A 31 \"dag_id\""
   ;;
 
 start-workflow)
@@ -183,11 +183,11 @@ start-workflow)
     exit 1
   fi
   get_namespace
-  get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger $WORKFLOW"
+  get_agent_scheduler
+  $KUBECTL -n $NAMESPACE -c scheduler exec $AGENT_SCHEDULER -- bash -c "airflow dags trigger $WORKFLOW"
   if [ $? == 0 ]
   then
-    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}${normal} or visit the ${bold}Workflow Jobs${normal} section of your Redactics account.\nErrors will be reported to your Redactics account (https://app.redactics.com)\n"
+    printf "${bold}YOUR JOB HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}${normal} or visit the ${bold}Workflow Jobs${normal} section of your Redactics account.\nErrors will be reported to your Redactics dashboard\n"
   fi
   ;;
 
@@ -199,11 +199,11 @@ start-scan)
     exit 1
   fi
   get_namespace
-  get_redactics_scheduler
-  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger ${WORKFLOW}-scanner"
+  get_agent_scheduler
+  $KUBECTL -n $NAMESPACE -c scheduler exec $AGENT_SCHEDULER -- bash -c "airflow dags trigger ${WORKFLOW}-scanner"
   if [ $? == 0 ]
   then
-    printf "${bold}YOUR SCAN HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-scanner${normal}\nBoth the results and any errors will be reported to your Redactics account (https://app.redactics.com/usecases/piiscanner)\n"
+    printf "${bold}YOUR SCAN HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs ${WORKFLOW}-scanner${normal}\nBoth the results and any errors will be reported to the Redactics dashboard (https://app.redactics.com/usecases/piiscanner)\n"
   fi
   ;;
 
@@ -284,9 +284,9 @@ install-sample-table)
     exit 0
   fi
 
-  get_redactics_scheduler
+  get_agent_scheduler
   JSON="'{\"input\": \"${CONN_ID}\"}'"
-  $KUBECTL -n $NAMESPACE -c scheduler exec $REDACTICS_SCHEDULER -- bash -c "airflow dags trigger -c $JSON sampletable-${SAMPLE_TABLE}"
+  $KUBECTL -n $NAMESPACE -c scheduler exec $AGENT_SCHEDULER -- bash -c "airflow dags trigger -c $JSON sampletable-${SAMPLE_TABLE}"
   if [ $? == 0 ]
   then
     printf "${bold}YOUR TABLE INSTALLATION HAS BEEN QUEUED!\n\n${normal}To track progress, enter ${bold}redactics list-runs sampletable-${SAMPLE_TABLE}${normal} or visit the ${bold}Workflow Jobs${normal} section of your Redactics account.\nBoth the results and any errors will be reported to your Redactics account\n"
@@ -295,7 +295,7 @@ install-sample-table)
 
 output-diagnostics)
   get_namespace
-  get_redactics_scheduler
+  get_agent_scheduler
   OUTPUT_FOLDER=redactics-diagnostics
   rm -rf $OUTPUT_FOLDER || true
   mkdir $OUTPUT_FOLDER
@@ -308,7 +308,7 @@ output-diagnostics)
   localenv+=$'\nDETECTED KUBERNETES NAMESPACE: '
   localenv+=$(echo $NAMESPACE)
   localenv+=$'\nSCHEDULER POD: '
-  localenv+=$(echo $REDACTICS_SCHEDULER)
+  localenv+=$(echo $AGENT_SCHEDULER)
   printf "$localenv" > ${OUTPUT_FOLDER}/env.log
   $HELM ls --all-namespaces > ${OUTPUT_FOLDER}/helm.log
   $KUBECTL -n $NAMESPACE get pods > ${OUTPUT_FOLDER}/pods.log
@@ -317,8 +317,8 @@ output-diagnostics)
   $KUBECTL -n $NAMESPACE get secret > ${OUTPUT_FOLDER}/secret-listing.log
   $KUBECTL -n $NAMESPACE logs -l app.kubernetes.io/name=http-nas --tail=-1 > ${OUTPUT_FOLDER}/http-nas.log
   $KUBECTL -n $NAMESPACE -c scheduler logs -l component=scheduler --tail=-1 > ${OUTPUT_FOLDER}/scheduler.log
-  $KUBECTL -n $NAMESPACE -c scheduler cp $REDACTICS_SCHEDULER:/opt/airflow/logs ${OUTPUT_FOLDER}/airflow-logs
-  printf "A folder called \"$OUTPUT_FOLDER\" has been created. Please zip this folder and send it to Redactics support for assistance with troubleshooting Redactics SMART Agent issues\n"
+  $KUBECTL -n $NAMESPACE -c scheduler cp $AGENT_SCHEDULER:/opt/airflow/logs ${OUTPUT_FOLDER}/airflow-logs
+  printf "A folder called \"$OUTPUT_FOLDER\" has been created. Please zip this folder and send it to Redactics support for assistance with troubleshooting Redactics Agent issues\n"
   ;;
 
 version)
